@@ -20,7 +20,7 @@ warnings.filterwarnings("ignore")
 
 # GPU allocation
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
-os.environ["CUDA_VISIBLE_DEVICES"]="0,1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 # data path
 root_path = '/data3/finance/'
@@ -62,7 +62,7 @@ training = TimeSeriesDataSet(
 
 # create validation set (predict=True) which means to predict the last max_prediction_length points in time for each series
 validation = TimeSeriesDataSet.from_dataset(training, data[lambda x: (x.date >= valid_boundary) & (x.date < test_boundary)], predict=True, stop_randomization=True)
-test = TimeSeriesDataSet.from_dataset(training, data[lambda x: x.date > test_boundary], predict=True, stop_randomization=True)
+test = TimeSeriesDataSet.from_dataset(training, data[lambda x: (x.date > test_boundary) & (x.date < '2019.06.29')], predict=True, stop_randomization=True)
 
 # create dataloaders for model
 batch_size = 64  # set this between 32 to 128
@@ -76,8 +76,8 @@ baseline_predictions = Baseline().predict(val_dataloader)
 print('baseline MAE: ', (actuals - baseline_predictions).abs().mean().item())
 
 # configure network and trainer
-early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=1e-6, patience=10, verbose=True, mode="min")
-lr_logger = LearningRateMonitor()  # log the learning rate
+# early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=1e-6, patience=10, verbose=True, mode="min")
+# lr_logger = LearningRateMonitor()  # log the learning rate
 
 if not os.path.exists(asset_path):
     os.makedirs(asset_path)
@@ -87,32 +87,33 @@ trainer = pl.Trainer(
     max_epochs=100,
     gpus=1,
     weights_summary="top",
-    gradient_clip_val=0.1,
+    gradient_clip_val=0.3498626806469764, # 0.1
     limit_train_batches=30,  # coment in for training, running valiation every 30 batches
     # fast_dev_run=True,  # comment in to check that networkor dataset has no serious bugs
-    callbacks=[lr_logger, early_stop_callback],
+    # callbacks=[lr_logger, early_stop_callback],
     logger=logger,
 )
 
 tft = TemporalFusionTransformer.from_dataset(
     training,
-    learning_rate=0.01,
-    hidden_size=160,
-    attention_head_size=1,
-    dropout=0.3,
-    hidden_continuous_size=8,
+    learning_rate=0.06901691924557539, # 0.01
+    hidden_size=78, # 160
+    attention_head_size=3, # 1
+    dropout=0.11547495781892213, # 0.3
+    hidden_continuous_size=26, # 8
     output_size=3,  # 7 quantiles by default
     loss=QuantileLoss(quantiles=[0.1, 0.5, 0.9]),
-    log_interval=10,  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
-    reduce_on_plateau_patience=4,
+    # log_interval=10,  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
+    # reduce_on_plateau_patience=4,
 )
+
 print(f"Number of parameters in network: {tft.size()/1e3:.1f}k")
 
 # fit network
 trainer.fit(
     tft,
     train_dataloader=train_dataloader,
-    val_dataloaders=val_dataloader
+    val_dataloaders=val_dataloader,
 )
 
 # load the best model according to the validation loss
@@ -126,14 +127,13 @@ actuals = torch.cat([y for x, y in iter(val_dataloader)])
 predictions = best_tft.predict(val_dataloader)
 print('validation MAE: ', (actuals - predictions).abs().mean())
 
-
+# For testing, you should append test_step(), test_epoch_end() method in Basemodel class. (filepath: pytorch-forecasting > models > base_model.py)
 # Test
 trainer.test(
+    best_tft,
     test_dataloaders=test_dataloader, 
     verbose=True,
 )
-
-
 
 
 ##### Visualizing Part #####
