@@ -23,15 +23,21 @@ warnings.filterwarnings("ignore")
 
 # hyperparameter - using argparse and parameter module
 parser = argparse.ArgumentParser()
-parser.add_argument('--data', type=str, help='experiment data', default='volatility')
-parser.add_argument('--idx', type=int, help='experiment number',  default=0)
+parser.add_argument('--data', type=str, help='experiment data', default='btc_krw')
+parser.add_argument('--idx', type=int, help='experiment number',  default=None)
 parser.add_argument('--ws', type=str, help='machine number', default='9')
 parser.add_argument('--gpu_index', '-g', type=int, default="0", help='GPU index')
 parser.add_argument('--ngpu', type=int, default=1, help='0 = CPU.')
 parser.add_argument('--seed', type=int, default=1)
 args = parser.parse_args()
 
+# GPU allocation
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
+
 device = torch.device("cuda:%d" % args.gpu_index if torch.cuda.is_available() else "cpu")
+torch.cuda.set_device(device)
+print('Current cuda device ', torch.cuda.current_device())
 hparam_file = os.path.join(os.getcwd(), "hparams.yaml")
 
 config = HParams.load(hparam_file)
@@ -49,9 +55,9 @@ data = preprocess(args.data)
 
 # Training setting
 max_prediction_length = config.experiment['max_prediction_length']
-max_encoder_length = config.experiment['max_encoder_length']
-valid_boundary = config.experiment['valid_boundary']
-test_boundary = config.experiment['test_boundary']
+max_encoder_length = config.experiment['max_encoder_length'][args.data]
+valid_boundary = config.experiment['valid_boundary'][args.data]
+test_boundary = config.experiment['test_boundary'][args.data]
 
 training = TimeSeriesDataSet(
     data[lambda x: x.date < valid_boundary],
@@ -71,7 +77,7 @@ training = TimeSeriesDataSet(
     time_varying_unknown_reals=config.dataset_setting[args.data]['time_varying_unknown_reals'],
     target_normalizer=GroupNormalizer(groups=config.dataset_setting[args.data]['group_ids']),  # normalize by group
     allow_missings=True, # allow time_idx missing
-    scalers={StandardScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
+    scalers={MinMaxScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
     add_relative_time_idx=True,
     add_target_scales=True,
     add_encoder_length=True,
@@ -94,7 +100,7 @@ baseline_predictions = Baseline().predict(val_dataloader)
 print('baseline MAE: ', (actuals - baseline_predictions).abs().mean().item())
 
 # configure network and trainer
-early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=1e-6, patience=20, verbose=True, mode="min")
+early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=1e-6, patience=10, verbose=True, mode="min")
 lr_logger = LearningRateMonitor()  # log the learning rate
 
 if not os.path.exists(asset_root):
@@ -108,12 +114,13 @@ trainer = pl.Trainer(
     gradient_clip_val=config.experiment['gradient_clip'],
     limit_train_batches=config.experiment['limit_train_batches'],  # coment in for training, running valiation every 30 batches
     callbacks=[lr_logger, early_stop_callback],
+    # callbacks=[lr_logger],
     logger=logger,
 )
 
 tft = TemporalFusionTransformer.from_dataset(
     training,
-    learning_rate=config.experiment['lr'], 
+    learning_rate=config.experiment['lr'][args.data], 
     hidden_size=config.model['hidden_size'], 
     attention_head_size=config.model['attention_head_size'],
     dropout=config.model['dropout'],
@@ -152,17 +159,39 @@ trainer.test(
     verbose=True,
 )
 
-
 ##### Visualizing Part #####
+image_root = os.path.join(logger.log_dir, 'images')
+if not os.path.exists(image_root):
+    os.makedirs(image_root)
+
+best_tft.to(torch.device('cpu'))
 # raw predictions are a dictionary from which all kind of information including quantiles can be extracted
-# raw_predictions, x = best_tft.predict(val_dataloader, mode="raw", return_x=True)
-# for idx in range(10): 
-#     best_tft.plot_prediction(x, raw_predictions, idx=idx, add_loss_to_title=True)
+raw_predictions, x = best_tft.predict(val_dataloader, mode="raw", return_x=True)
+for idx in range(10): 
+    try:
+        fig = best_tft.plot_prediction(x, raw_predictions, idx=idx, add_loss_to_title=True)
+        fig.savefig(os.path.join(image_root, f'{args.data}_sample_{idx}.png'))
+    except:
+        continue
 
-# predictions, x = best_tft.predict(val_dataloader, return_x=True)
-# predictions_vs_actuals = best_tft.calculate_prediction_actual_by_variable(x, predictions)
-# best_tft.plot_prediction_actual_by_variable(predictions_vs_actuals)
+predictions = best_tft.predict(val_dataloader)
+mean_losses = SMAPE(reduction="none")(predictions, actuals).mean(1)
+indices = mean_losses.argsort(descending=False)  # sort losses
+for idx in range(10):  # plot 10 examples
+    try:
+        fig2 = best_tft.plot_prediction(x, raw_predictions, idx=indices[idx], add_loss_to_title=SMAPE())
+        fig2.savefig(os.path.join(image_root, f'{args.data}_best_SMAPE_{idx}.png'))
+    except:
+        continue
 
-# interpretation = best_tft.interpret_output(raw_predictions, reduction="sum")
-# best_tft.plot_interpretation(interpretation)
+predictions, x = best_tft.predict(val_dataloader, return_x=True)
+predictions_vs_actuals = best_tft.calculate_prediction_actual_by_variable(x, predictions)
+fig3_dict = best_tft.plot_prediction_actual_by_variable(predictions_vs_actuals)
+for name in fig3_dict.keys():
+    fig3_dict[name].savefig(os.path.join(image_root, f'{args.data}_prediction_vs_actuals_{name}.png'))
+
+interpretation = best_tft.interpret_output(raw_predictions, reduction="sum")
+fig4_dict = best_tft.plot_interpretation(interpretation)
+for name in fig4_dict.keys():
+    fig4_dict[name].savefig(os.path.join(image_root, f'{args.data}_interpretation_{name}.png'))
 
