@@ -14,10 +14,10 @@ from preprocessing import preprocess
 import warnings
 warnings.filterwarnings("ignore")
 
-data = preprocess('bitcoin')
+data = preprocess('bitcoin_usd')
 
 ts = fill_missing_values(TimeSeries.from_dataframe(data, 'date', ['log_Close']), 'auto')
-train, val = ts.split_after(pd.Timestamp('20201101'))
+train, val = ts.split_after(pd.Timestamp('20201103'))
 
 models = [
     AutoARIMA(),
