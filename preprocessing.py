@@ -11,7 +11,7 @@ warnings.filterwarnings("ignore")
 def preprocess(data_name):
     output_file = os.path.join('/data3/finance/', data_name + '.csv')
 
-    if data_name == 'volatility':
+    if data_name == 'vol':
         if not os.path.exists(output_file):
             csv_path = '/data3/finance/oxfordmanrealizedvolatilityindices.csv'
             data = pd.read_csv(csv_path, encoding='utf-8')
@@ -92,7 +92,7 @@ def preprocess(data_name):
             data['month'] = data['month'].astype(str).astype('category')
             data['year'] = data['year'].astype(str).astype('category')
         
-    elif data_name == 'bitcoin':
+    elif data_name == 'btc_krw':
         if not os.path.exists(output_file):
             data = fdr.DataReader('BTC/KRW')
             data.reset_index(inplace=True)
@@ -113,6 +113,99 @@ def preprocess(data_name):
             data['Symbol'] = 'BTC/KRW'
             print('Completed formatting, saving to {}'.format(output_file))
             data.to_csv(output_file, encoding='utf-8')
+        else:
+            data = pd.read_csv(output_file, encoding='utf-8')
+            data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
+            data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
+            data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
+            data['month'] = data['month'].astype(str).astype('category')
+            data['year'] = data['year'].astype(str).astype('category')
+    
+    elif data_name == 'btc_usd':
+        if not os.path.exists(output_file):
+            data = fdr.DataReader('BTC/USD')
+            data.reset_index(inplace=True)
+            data.rename(columns={'Date':'date'}, inplace=True)
+            # data preprocessing
+            dates = pd.to_datetime(data['date'].to_list())
+            data['days_from_start'] = (dates - pd.datetime(2010, 7, 18)).days
+            data['day_of_week'] = dates.dayofweek.astype(str).astype('category')
+            data['day_of_month'] = dates.day.astype(str).astype('category')
+            data['week_of_year'] = dates.weekofyear.astype(str).astype('category')
+            data['month'] = dates.month.astype(str).astype('category')
+            data['year'] = dates.year.astype(str).astype('category')
+
+            # Processes log Close
+            close = data['Close'].copy()
+            data['log_Close'] = np.log(close)
+            
+            data['Symbol'] = 'BTC/USD'
+            print('Completed formatting, saving to {}'.format(output_file))
+            data.to_csv(output_file, encoding='utf-8')
+        else:
+            data = pd.read_csv(output_file, encoding='utf-8')
+            data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
+            data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
+            data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
+            data['month'] = data['month'].astype(str).astype('category')
+            data['year'] = data['year'].astype(str).astype('category')
+
+    elif data_name == 'crypto':
+        if not os.path.exists(output_file):
+            top100_csv = '/data3/finance/Top100Cryptos/100 List.csv'
+            df = pd.read_csv(top100_csv, encoding='utf-8')
+            top12 = df['Name'][:12].to_list()
+            data = None
+            for name in top12:
+                print(f'crypto {name} processing...')
+                csv_path = os.path.join('/data3/finance/Top100Cryptos/', name + '.csv')
+                if data is not None:
+                    data2 = pd.read_csv(csv_path, encoding='utf-8')
+                    data2.rename(columns={'Date':'date'}, inplace=True)
+                    data2['date'] = pd.to_datetime(data2.date)
+                    if data2['date'].min() < pd.to_datetime('2016'): # 데이터가 너무 적은 것은 제외하기 위해 2016년 이전의 데이터가 있는 암호화폐만 선택
+                        data2['Symbol'] = name
+                        data2 = data2.sort_values(by=['date'])
+                        data2['Market Cap'] = data2['Market Cap'].replace({'-': None})
+                        data2['Market Cap'] = data2['Market Cap'].str.replace(',', '')
+                        data2['Market Cap'].fillna(method='bfill', inplace=True)
+                        data2['Volume'] = data2['Volume'].replace({'-': None})
+                        data2['Volume'] = data2['Volume'].str.replace(',', '')
+                        data2['Volume'].fillna(method='bfill', inplace=True)
+                        data2 = data2.dropna()
+                        data = pd.concat([data, data2], axis=0)
+                else:
+                    data = pd.read_csv(csv_path, encoding='utf-8')
+                    data.rename(columns={'Date':'date'}, inplace=True)
+                    data['Symbol'] = name
+                    data['date'] = pd.to_datetime(data.date)
+                    data = data.sort_values(by=['date'])
+                    data['Market Cap'] = data['Market Cap'].replace({'-': None})
+                    data['Market Cap'] = data['Market Cap'].str.replace(',', '')
+                    data['Market Cap'].fillna(method='bfill', inplace=True)
+                    data['Volume'] = data['Volume'].replace({'-': None})
+                    data['Volume'] = data['Volume'].str.replace(',', '')
+                    data['Volume'].fillna(method='bfill', inplace=True)
+                    data = data.dropna()
+
+            # data preprocessing
+            data = data.reset_index()
+            dates = pd.to_datetime(data['date'].to_list())
+            data['days_from_start'] = (dates - pd.datetime(2013, 4, 28)).days
+            data['day_of_week'] = dates.dayofweek.astype(str).astype('category')
+            data['day_of_month'] = dates.day.astype(str).astype('category')
+            data['week_of_year'] = dates.weekofyear.astype(str).astype('category')
+            data['month'] = dates.month.astype(str).astype('category')
+            data['year'] = dates.year.astype(str).astype('category')
+
+            # Processes log Close
+            close = data['Close'].copy()
+            data['log_Close'] = np.log(close)
+
+            # save
+            print('Completed formatting, saving to {}'.format(output_file))
+            data.to_csv(output_file, encoding='utf-8')
+                
         else:
             data = pd.read_csv(output_file, encoding='utf-8')
             data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
