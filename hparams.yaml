@@ -64,15 +64,15 @@ experiment:
   batch_size: 64
   lr:
     vol: 0.01
-    btc_krw: 0.1
-    btc_usd: 0.1
-    crypto: 0.1
+    btc_krw: 0.01
+    btc_usd: 0.01
+    crypto: 0.01
   max_prediction_length: 5
   max_encoder_length:
     vol: 252
-    btc_krw: 63
-    btc_usd: 63
-    crypto: 63
+    btc_krw: 252
+    btc_usd: 252
+    crypto: 252
   valid_boundary: 
     vol: '2016'
     btc_krw: '2019'
@@ -89,3 +89,6 @@ experiment:
   
 asset_root:
   '9': '/data3/finance/assets/cjhan/tft_logs/'
+
+optuna_root:
+  '9': '/data3/finance/assets/cjhan/tft_logs/optuna_test'
