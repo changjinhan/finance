@@ -13,6 +13,18 @@ dataset_setting:
     time_varying_known_reals: ["days_from_start"]
     time_varying_unknown_categoricals: []
     time_varying_unknown_reals: ["log_vol", "open_to_close"]
+
+  'stock_idx': 
+    time_idx: 'days_from_start'
+    target: 'log_close'
+    group_ids: ['Region', 'Symbol']
+    static_categoricals: ['Region', 'Symbol']
+    static_reals: []
+    time_varying_known_categoricals: ["day_of_week", "day_of_month", "week_of_year", "month"]
+    variable_groups: {}
+    time_varying_known_reals: ["days_from_start"]
+    time_varying_unknown_categoricals: []
+    time_varying_unknown_reals: ["log_close", "log_vol"]
     
   'btc_krw': 
     time_idx: 'days_from_start'
@@ -53,7 +65,7 @@ dataset_setting:
 model:
   hidden_size: 160
   attention_head_size: 1
-  dropout: 0.3
+  dropout: 0.5
   hidden_continuous_size: 8
   output_size: 3  # 7 quantiles by default
   log_interval: 10  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
@@ -64,28 +76,43 @@ experiment:
   batch_size: 64
   lr:
     vol: 0.01
+    stock_idx: 0.01
     btc_krw: 0.01
     btc_usd: 0.01
     crypto: 0.01
   max_prediction_length: 5
   max_encoder_length:
     vol: 252
+    stock_idx: 252
     btc_krw: 252
     btc_usd: 252
     crypto: 252
+  symbol_boundary:
+    '.SPX':
+      'recession':
+        - '2008.02.01'
+        - '2009.02.01'
+      'stable':
+        - '2014.08.01'
+        - '2015.08.01'
+      'boom':
+        - '2019.02.01'
+        - '2020.02.01'
   valid_boundary: 
     vol: '2016'
+    stock_idx: '2016'
     btc_krw: '2019'
     btc_usd: '2016' 
     crypto: '2016'
   test_boundary:
     vol: '2018'
+    stock_idx: '2019'
     btc_krw: '2020'
     btc_usd: '2018'
     crypto: '2017'
   weights_summary: 'top'
   gradient_clip: 0.1
-  limit_train_batches: 30
+  limit_train_batches: 1.0
   
 asset_root:
   '9': '/data3/finance/assets/cjhan/tft_logs/'

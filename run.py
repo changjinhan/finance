@@ -23,7 +23,8 @@ warnings.filterwarnings("ignore")
 
 # hyperparameter - using argparse and parameter module
 parser = argparse.ArgumentParser()
-parser.add_argument('--data', type=str, help='experiment data', default='btc_krw')
+parser.add_argument('--data', type=str, help='experiment data', default='vol')
+parser.add_argument('--symbol', type=str, help='stock symbol', default=None)
 parser.add_argument('--idx', type=int, help='experiment number',  default=None)
 parser.add_argument('--ws', type=str, help='machine number', default='9')
 parser.add_argument('--gpu_index', '-g', type=int, default="0", help='GPU index')
@@ -51,48 +52,88 @@ if args.seed > 0:
     random.seed(args.seed)
 
 # preprocessing
-data = preprocess(args.data)
+data = preprocess(args.data, args.symbol)
 
 # Training setting
 max_prediction_length = config.experiment['max_prediction_length']
 max_encoder_length = config.experiment['max_encoder_length'][args.data]
-valid_boundary = config.experiment['valid_boundary'][args.data]
-test_boundary = config.experiment['test_boundary'][args.data]
+if args.symbol is None:
+    valid_boundary = config.experiment['valid_boundary'][args.data]
+    test_boundary = config.experiment['test_boundary'][args.data]
 
-training = TimeSeriesDataSet(
-    data[lambda x: x.date < valid_boundary],
-    time_idx=config.dataset_setting[args.data]['time_idx'],
-    target=config.dataset_setting[args.data]['target'],
-    group_ids=config.dataset_setting[args.data]['group_ids'],
-    min_encoder_length=max_encoder_length // 2,  # keep encoder length long (as it is in the validation set)
-    max_encoder_length=max_encoder_length,
-    min_prediction_length=1,
-    max_prediction_length=max_prediction_length,
-    static_categoricals=config.dataset_setting[args.data]['static_categoricals'],
-    static_reals=config.dataset_setting[args.data]['static_reals'],
-    time_varying_known_categoricals=config.dataset_setting[args.data]['time_varying_known_categoricals'],
-    variable_groups=config.dataset_setting[args.data]['variable_groups'],  # group of categorical variables can be treated as one variable
-    time_varying_known_reals=config.dataset_setting[args.data]['time_varying_known_reals'],
-    time_varying_unknown_categoricals=config.dataset_setting[args.data]['time_varying_unknown_categoricals'],
-    time_varying_unknown_reals=config.dataset_setting[args.data]['time_varying_unknown_reals'],
-    target_normalizer=GroupNormalizer(groups=config.dataset_setting[args.data]['group_ids']),  # normalize by group
-    allow_missings=True, # allow time_idx missing
-    scalers={MinMaxScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
-    add_relative_time_idx=True,
-    add_target_scales=True,
-    add_encoder_length=True,
-)
+    training = TimeSeriesDataSet(
+        data[lambda x: pd.to_datetime(x.date) < pd.to_datetime(valid_boundary)],
+        time_idx=config.dataset_setting[args.data]['time_idx'],
+        target=config.dataset_setting[args.data]['target'],
+        group_ids=config.dataset_setting[args.data]['group_ids'],
+        min_encoder_length=max_encoder_length // 2,  # keep encoder length long (as it is in the validation set)
+        max_encoder_length=max_encoder_length,
+        min_prediction_length=1,
+        max_prediction_length=max_prediction_length,
+        static_categoricals=config.dataset_setting[args.data]['static_categoricals'],
+        static_reals=config.dataset_setting[args.data]['static_reals'],
+        time_varying_known_categoricals=config.dataset_setting[args.data]['time_varying_known_categoricals'],
+        variable_groups=config.dataset_setting[args.data]['variable_groups'],  # group of categorical variables can be treated as one variable
+        time_varying_known_reals=config.dataset_setting[args.data]['time_varying_known_reals'],
+        time_varying_unknown_categoricals=config.dataset_setting[args.data]['time_varying_unknown_categoricals'],
+        time_varying_unknown_reals=config.dataset_setting[args.data]['time_varying_unknown_reals'],
+        target_normalizer=GroupNormalizer(groups=config.dataset_setting[args.data]['group_ids']),  # normalize by group
+        allow_missings=True, # allow time_idx missing
+        scalers={StandardScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
+        add_relative_time_idx=True,
+        add_target_scales=True,
+        add_encoder_length=True,
+    )
 
-# create validation set (predict=True) which means to predict the last max_prediction_length points in time for each series
-validation = TimeSeriesDataSet.from_dataset(training, data[lambda x: (x.date >= valid_boundary) & (x.date < test_boundary)], predict=True, stop_randomization=True)
-test = TimeSeriesDataSet.from_dataset(training, data[lambda x: x.date >= test_boundary], predict=True, stop_randomization=True)
-# test = TimeSeriesDataSet.from_dataset(training, data[lambda x: (x.date >= test_boundary) & (x.date < '2019.06.29')], predict=True, stop_randomization=True)
+    # create validation set (predict=True) which means to predict the last max_prediction_length points in time for each series
+    validation = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(valid_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime(test_boundary))], predict=True, stop_randomization=True)
+    # test = TimeSeriesDataSet.from_dataset(training, data[lambda x: pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)], predict=True, stop_randomization=True)
+    test = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime('2019.06.29'))], predict=True, stop_randomization=True)
 
-# create dataloaders for model
-batch_size = config.experiment['batch_size']  # set this between 32 to 128
-train_dataloader = training.to_dataloader(train=True, batch_size=batch_size, num_workers=0)
-val_dataloader = validation.to_dataloader(train=False, batch_size=batch_size, num_workers=0)
-test_dataloader = test.to_dataloader(train=False, batch_size=batch_size, num_workers=0)
+    # create dataloaders for model
+    batch_size = config.experiment['batch_size']  # set this between 32 to 128
+    train_dataloader = training.to_dataloader(train=True, batch_size=batch_size, num_workers=0)
+    val_dataloader = validation.to_dataloader(train=False, batch_size=batch_size, num_workers=0)
+    test_dataloader = test.to_dataloader(train=False, batch_size=batch_size, num_workers=0)
+else:
+    # specific period testing (recession, stable, boom) for each symbol
+    train_boundary_low = config.experiment['symbol_boundary'][args.symbol]['stable'][0]
+    train_boundary_high = config.experiment['symbol_boundary'][args.symbol]['stable'][1]
+    val_boundary_low = config.experiment['symbol_boundary'][args.symbol]['boom'][0]
+    val_boundary_high = config.experiment['symbol_boundary'][args.symbol]['boom'][1]
+
+    training = TimeSeriesDataSet(
+        data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(train_boundary_low)) & (pd.to_datetime(x.date) <= pd.to_datetime(train_boundary_high))],
+        time_idx=config.dataset_setting[args.data]['time_idx'],
+        target=config.dataset_setting[args.data]['target'],
+        group_ids=config.dataset_setting[args.data]['group_ids'],
+        min_encoder_length=max_encoder_length // 2,  # keep encoder length long (as it is in the validation set)
+        max_encoder_length=max_encoder_length,
+        min_prediction_length=1,
+        max_prediction_length=max_prediction_length,
+        static_categoricals=config.dataset_setting[args.data]['static_categoricals'],
+        static_reals=config.dataset_setting[args.data]['static_reals'],
+        time_varying_known_categoricals=config.dataset_setting[args.data]['time_varying_known_categoricals'],
+        variable_groups=config.dataset_setting[args.data]['variable_groups'],  # group of categorical variables can be treated as one variable
+        time_varying_known_reals=config.dataset_setting[args.data]['time_varying_known_reals'],
+        time_varying_unknown_categoricals=config.dataset_setting[args.data]['time_varying_unknown_categoricals'],
+        time_varying_unknown_reals=config.dataset_setting[args.data]['time_varying_unknown_reals'],
+        target_normalizer=GroupNormalizer(groups=config.dataset_setting[args.data]['group_ids']),  # normalize by group
+        allow_missings=True, # allow time_idx missing
+        scalers={StandardScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
+        add_relative_time_idx=True,
+        add_target_scales=True,
+        add_encoder_length=True,
+    )
+
+    # create validation set (predict=True) which means to predict the last max_prediction_length points in time for each series
+    print(data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(val_boundary_low)) & (pd.to_datetime(x.date) <= pd.to_datetime(val_boundary_high))])
+    validation = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(val_boundary_low)) & (pd.to_datetime(x.date) <= pd.to_datetime(val_boundary_high))], predict=True, stop_randomization=True)
+
+    # create dataloaders for model
+    batch_size = config.experiment['batch_size']  # set this between 32 to 128
+    train_dataloader = training.to_dataloader(train=True, batch_size=batch_size, num_workers=0)
+    val_dataloader = validation.to_dataloader(train=False, batch_size=batch_size, num_workers=0)
 
 # calculate baseline mean absolute error, i.e. predict next value as the last available value from the history
 actuals = torch.cat([y for x, y in iter(val_dataloader)])
@@ -113,8 +154,8 @@ trainer = pl.Trainer(
     weights_summary=config.experiment['weights_summary'],
     gradient_clip_val=config.experiment['gradient_clip'],
     limit_train_batches=config.experiment['limit_train_batches'],  # coment in for training, running valiation every 30 batches
-    callbacks=[lr_logger, early_stop_callback],
-    # callbacks=[lr_logger],
+    # callbacks=[lr_logger, early_stop_callback],
+    callbacks=[lr_logger],
     logger=logger,
 )
 
@@ -153,11 +194,11 @@ print('validation MAE: ', (actuals - predictions).abs().mean())
 
 # For testing, you should append test_step(), test_epoch_end() method in Basemodel class. (filepath: pytorch-forecasting > models > base_model.py)
 # Test
-trainer.test(
-    best_tft,
-    test_dataloaders=test_dataloader, 
-    verbose=True,
-)
+# trainer.test(
+#     best_tft,
+#     test_dataloaders=test_dataloader, 
+#     verbose=True,
+# )
 
 ##### Visualizing Part #####
 image_root = os.path.join(logger.log_dir, 'images')
@@ -167,7 +208,7 @@ if not os.path.exists(image_root):
 best_tft.to(torch.device('cpu'))
 # raw predictions are a dictionary from which all kind of information including quantiles can be extracted
 raw_predictions, x = best_tft.predict(val_dataloader, mode="raw", return_x=True)
-for idx in range(10): 
+for idx in range(len(raw_predictions['groups'])): 
     try:
         fig = best_tft.plot_prediction(x, raw_predictions, idx=idx, add_loss_to_title=True)
         fig.savefig(os.path.join(image_root, f'{args.data}_sample_{idx}.png'))
@@ -177,7 +218,7 @@ for idx in range(10):
 predictions = best_tft.predict(val_dataloader)
 mean_losses = SMAPE(reduction="none")(predictions, actuals).mean(1)
 indices = mean_losses.argsort(descending=False)  # sort losses
-for idx in range(10):  # plot 10 examples
+for idx in range(len(raw_predictions['groups'])):  # plot 10 examples
     try:
         fig2 = best_tft.plot_prediction(x, raw_predictions, idx=indices[idx], add_loss_to_title=SMAPE())
         fig2.savefig(os.path.join(image_root, f'{args.data}_best_SMAPE_{idx}.png'))
