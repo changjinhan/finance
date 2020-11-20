@@ -154,8 +154,8 @@ trainer = pl.Trainer(
     weights_summary=config.experiment['weights_summary'],
     gradient_clip_val=config.experiment['gradient_clip'],
     limit_train_batches=config.experiment['limit_train_batches'],  # coment in for training, running valiation every 30 batches
-    # callbacks=[lr_logger, early_stop_callback],
-    callbacks=[lr_logger],
+    callbacks=[lr_logger, early_stop_callback],
+    # callbacks=[lr_logger],
     logger=logger,
 )
 
@@ -194,20 +194,32 @@ print('validation MAE: ', (actuals - predictions).abs().mean())
 
 # For testing, you should append test_step(), test_epoch_end() method in Basemodel class. (filepath: pytorch-forecasting > models > base_model.py)
 # Test
-# trainer.test(
-#     best_tft,
-#     test_dataloaders=test_dataloader, 
-#     verbose=True,
-# )
+trainer.test(
+    best_tft,
+    test_dataloaders=test_dataloader, 
+    verbose=True,
+)
+# calcualte quantile loss on test set
+best_tft.to(torch.device('cpu'))
+actuals = torch.cat([y for x, y in iter(test_dataloader)])
+raw_predictions = best_tft.predict(test_dataloader, mode='raw')
+raw_predictions = raw_predictions['prediction']
+print(f'actuals: {actuals}')
+print(f'raw_predictions: {raw_predictions}')
+q_loss = QuantileLoss(quantiles=[0.1, 0.5, 0.9])
+losses = q_loss.loss(y_pred = raw_predictions, target=actuals)
+losses = torch.mean(losses.reshape(-1, losses.shape[-1]), 0)
+# print(f'losses: {losses}')
+print(f'Quantile loss - p50: {losses[1]}, p90: {losses[2]}')
+
 
 ##### Visualizing Part #####
 image_root = os.path.join(logger.log_dir, 'images')
 if not os.path.exists(image_root):
     os.makedirs(image_root)
 
-best_tft.to(torch.device('cpu'))
 # raw predictions are a dictionary from which all kind of information including quantiles can be extracted
-raw_predictions, x = best_tft.predict(val_dataloader, mode="raw", return_x=True)
+raw_predictions, x = best_tft.predict(test_dataloader, mode="raw", return_x=True)
 for idx in range(len(raw_predictions['groups'])): 
     try:
         fig = best_tft.plot_prediction(x, raw_predictions, idx=idx, add_loss_to_title=True)
@@ -215,17 +227,20 @@ for idx in range(len(raw_predictions['groups'])):
     except:
         continue
 
-predictions = best_tft.predict(val_dataloader)
+# prediction plot sort by SMAPE 
+predictions = best_tft.predict(test_dataloader)
 mean_losses = SMAPE(reduction="none")(predictions, actuals).mean(1)
-indices = mean_losses.argsort(descending=False)  # sort losses
-for idx in range(len(raw_predictions['groups'])):  # plot 10 examples
+print('mean losses', mean_losses)
+indices = torch.flip(mean_losses.argsort(descending=True), (0,))  # sort losses
+print('indices: ', indices)
+for idx in range(len(raw_predictions['groups'])): 
     try:
         fig2 = best_tft.plot_prediction(x, raw_predictions, idx=indices[idx], add_loss_to_title=SMAPE())
         fig2.savefig(os.path.join(image_root, f'{args.data}_best_SMAPE_{idx}.png'))
     except:
         continue
 
-predictions, x = best_tft.predict(val_dataloader, return_x=True)
+predictions, x = best_tft.predict(test_dataloader, return_x=True)
 predictions_vs_actuals = best_tft.calculate_prediction_actual_by_variable(x, predictions)
 fig3_dict = best_tft.plot_prediction_actual_by_variable(predictions_vs_actuals)
 for name in fig3_dict.keys():
