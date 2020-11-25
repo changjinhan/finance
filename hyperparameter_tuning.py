@@ -24,7 +24,8 @@ warnings.filterwarnings("ignore")
 
 # hyperparameter - using argparse and parameter module
 parser = argparse.ArgumentParser()
-parser.add_argument('--data', type=str, help='experiment data', default='btc_krw')
+parser.add_argument('--data', type=str, help='experiment data', default='vol')
+parser.add_argument('--symbol', type=str, help='stock symbol', default=None)
 parser.add_argument('--idx', type=int, help='experiment number',  default=None)
 parser.add_argument('--ws', type=str, help='machine number', default='9')
 parser.add_argument('--gpu_index', '-g', type=int, default="0", help='GPU index')
@@ -34,7 +35,7 @@ args = parser.parse_args()
 
 # GPU allocation
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]=str(args.gpu_index)
 
 device = torch.device("cuda:%d" % args.gpu_index if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
@@ -54,7 +55,7 @@ if args.seed > 0:
     random.seed(args.seed)
 
 # preprocessing
-data = preprocess(args.data)
+data = preprocess(args.data, args.symbol)
 
 # Training setting
 max_prediction_length = config.experiment['max_prediction_length']
@@ -63,7 +64,7 @@ valid_boundary = config.experiment['valid_boundary'][args.data]
 test_boundary = config.experiment['test_boundary'][args.data]
 
 training = TimeSeriesDataSet(
-    data[lambda x: x.date < valid_boundary],
+    data[lambda x: pd.to_datetime(x.date) < pd.to_datetime(valid_boundary)],
     time_idx=config.dataset_setting[args.data]['time_idx'],
     target=config.dataset_setting[args.data]['target'],
     group_ids=config.dataset_setting[args.data]['group_ids'],
@@ -80,16 +81,18 @@ training = TimeSeriesDataSet(
     time_varying_unknown_reals=config.dataset_setting[args.data]['time_varying_unknown_reals'],
     target_normalizer=GroupNormalizer(groups=config.dataset_setting[args.data]['group_ids']),  # normalize by group
     allow_missings=True, # allow time_idx missing
-    scalers={MinMaxScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
+    scalers={StandardScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
     add_relative_time_idx=True,
     add_target_scales=True,
     add_encoder_length=True,
 )
 
 # create validation set (predict=True) which means to predict the last max_prediction_length points in time for each series
-validation = TimeSeriesDataSet.from_dataset(training, data[lambda x: (x.date >= valid_boundary) & (x.date < test_boundary)], predict=True, stop_randomization=True)
-test = TimeSeriesDataSet.from_dataset(training, data[lambda x: x.date >= test_boundary], predict=True, stop_randomization=True)
-# test = TimeSeriesDataSet.from_dataset(training, data[lambda x: (x.date >= test_boundary) & (x.date < '2019.06.29')], predict=True, stop_randomization=True)
+validation = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(valid_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime(test_boundary))], predict=True, stop_randomization=True)
+if args.data == 'vol':
+    test = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime('2019.06.29'))], predict=True, stop_randomization=True)
+else:
+    test = TimeSeriesDataSet.from_dataset(training, data[lambda x: pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)], predict=True, stop_randomization=True)
 
 # create dataloaders for model
 batch_size = config.experiment['batch_size']  # set this between 32 to 128
@@ -106,15 +109,15 @@ study = optimize_hyperparameters(
     val_dataloader,
     model_path=optuna_path,
     log_dir=asset_path,
-    n_trials=100,
-    max_epochs=50,
+    n_trials=200,
+    max_epochs=100,
     gradient_clip_val_range=(0.01, 1.0),
     hidden_size_range=(8, 128),
     hidden_continuous_size_range=(8, 128),
     attention_head_size_range=(1, 4),
     learning_rate_range=(0.001, 0.1),
-    dropout_range=(0.1, 0.3),
-    trainer_kwargs=dict(limit_train_batches=30),
+    dropout_range=(0.1, 0.9),
+    trainer_kwargs=dict(limit_train_batches=1.0),
     reduce_on_plateau_patience=4,
     use_learning_rate_finder=False,  # use Optuna to find ideal learning rate or use in-built learning rate finder
 )
@@ -125,6 +128,26 @@ with open(os.path.join(optuna_path, "test_study.pkl"), "wb") as fout:
 
 # show best hyperparameters
 print(study.best_trial.params)
+
+# test on the best model
+for ckpt_file in os.listdir(os.path.join(optuna_path, "trial_"+str(study.best_trial.number))):
+    if ckpt_file.endswith(".ckpt"):
+        best_model_path = os.path.join(os.path.join(optuna_path, "trial_"+str(study.best_trial.number)), ckpt_file)
+print(best_model_path)
+best_tft = TemporalFusionTransformer.load_from_checkpoint(best_model_path)
+# calcualte quantile loss on test set
+best_tft.to(torch.device('cpu'))
+actuals = torch.cat([y for x, y in iter(test_dataloader)])
+raw_predictions = best_tft.predict(test_dataloader, mode='raw')
+raw_predictions = raw_predictions['prediction']
+# print(f'actuals: {actuals}')
+# print(f'raw_predictions: {raw_predictions}')
+q_loss = QuantileLoss(quantiles=[0.1, 0.5, 0.9])
+losses = q_loss.loss(y_pred = raw_predictions, target=actuals)
+losses = torch.mean(losses.reshape(-1, losses.shape[-1]), 0)
+# print(f'losses: {losses}')
+print(f'Quantile loss - p50: {losses[1]}, p90: {losses[2]}')
+
 
 '''
 # print example

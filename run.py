@@ -34,7 +34,7 @@ args = parser.parse_args()
 
 # GPU allocation
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]=str(args.gpu_index)
 
 device = torch.device("cuda:%d" % args.gpu_index if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
@@ -87,8 +87,10 @@ if args.symbol is None:
 
     # create validation set (predict=True) which means to predict the last max_prediction_length points in time for each series
     validation = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(valid_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime(test_boundary))], predict=True, stop_randomization=True)
-    # test = TimeSeriesDataSet.from_dataset(training, data[lambda x: pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)], predict=True, stop_randomization=True)
-    test = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime('2019.06.29'))], predict=True, stop_randomization=True)
+    if args.data == 'vol':
+        test = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime('2019.06.29'))], predict=True, stop_randomization=True)
+    else:
+        test = TimeSeriesDataSet.from_dataset(training, data[lambda x: pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)], predict=True, stop_randomization=True)
 
     # create dataloaders for model
     batch_size = config.experiment['batch_size']  # set this between 32 to 128
@@ -204,8 +206,8 @@ best_tft.to(torch.device('cpu'))
 actuals = torch.cat([y for x, y in iter(test_dataloader)])
 raw_predictions = best_tft.predict(test_dataloader, mode='raw')
 raw_predictions = raw_predictions['prediction']
-print(f'actuals: {actuals}')
-print(f'raw_predictions: {raw_predictions}')
+# print(f'actuals: {actuals}')
+# print(f'raw_predictions: {raw_predictions}')
 q_loss = QuantileLoss(quantiles=[0.1, 0.5, 0.9])
 losses = q_loss.loss(y_pred = raw_predictions, target=actuals)
 losses = torch.mean(losses.reshape(-1, losses.shape[-1]), 0)
@@ -230,9 +232,9 @@ for idx in range(len(raw_predictions['groups'])):
 # prediction plot sort by SMAPE 
 predictions = best_tft.predict(test_dataloader)
 mean_losses = SMAPE(reduction="none")(predictions, actuals).mean(1)
-print('mean losses', mean_losses)
+# print('mean losses', mean_losses)
 indices = torch.flip(mean_losses.argsort(descending=True), (0,))  # sort losses
-print('indices: ', indices)
+# print('indices: ', indices)
 for idx in range(len(raw_predictions['groups'])): 
     try:
         fig2 = best_tft.plot_prediction(x, raw_predictions, idx=indices[idx], add_loss_to_title=SMAPE())

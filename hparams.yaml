@@ -16,7 +16,7 @@ dataset_setting:
 
   'stock_idx': 
     time_idx: 'days_from_start'
-    target: 'log_close'
+    target: 'close_price'
     group_ids: ['Region', 'Symbol']
     static_categoricals: ['Region', 'Symbol']
     static_reals: []
@@ -24,11 +24,11 @@ dataset_setting:
     variable_groups: {}
     time_varying_known_reals: ["days_from_start"]
     time_varying_unknown_categoricals: []
-    time_varying_unknown_reals: ["log_close", "log_vol"]
+    time_varying_unknown_reals: ["close_price", "log_vol", "open_to_close"]
     
   'btc_krw': 
     time_idx: 'days_from_start'
-    target: 'log_Close'
+    target: 'Close'
     group_ids: ['Symbol']
     static_categoricals: ['Symbol']
     static_reals: []
@@ -36,11 +36,11 @@ dataset_setting:
     variable_groups: {}
     time_varying_known_reals: ["days_from_start"]
     time_varying_unknown_categoricals: []
-    time_varying_unknown_reals: ["log_Close", "Volume", "Change"]
+    time_varying_unknown_reals: ["Close", "Volume", "Change"]
 
   'btc_usd': 
     time_idx: 'days_from_start'
-    target: 'log_Close'
+    target: 'Close'
     group_ids: ['Symbol']
     static_categoricals: ['Symbol']
     static_reals: []
@@ -48,11 +48,12 @@ dataset_setting:
     variable_groups: {}
     time_varying_known_reals: ["days_from_start"]
     time_varying_unknown_categoricals: []
-    time_varying_unknown_reals: ["log_Close", "Volume", "Change"]
+    time_varying_unknown_reals: ["Close", "Volume", "Change"]
 
   'crypto': 
     time_idx: 'days_from_start'
-    target: 'log_Close'
+    target: 'Close'
+    # target: 'Return'
     group_ids: ['Symbol']
     static_categoricals: ['Symbol']
     static_reals: []
@@ -60,7 +61,32 @@ dataset_setting:
     variable_groups: {}
     time_varying_known_reals: ["days_from_start"]
     time_varying_unknown_categoricals: []
-    time_varying_unknown_reals: ["log_Close", "Volume", "Market Cap"]
+    time_varying_unknown_reals: ["Return", "Close", "Volume", "Market Cap"]
+    # time_varying_unknown_reals: ["Return"]
+
+  'crypto_hourly': 
+    time_idx: 'hours_from_start'
+    target: 'Close'
+    group_ids: ['Symbol']
+    static_categoricals: ['Symbol']
+    static_reals: []
+    time_varying_known_categoricals: ['hour', 'day_of_week', 'day_of_month', 'week_of_year', 'month']
+    variable_groups: {}
+    time_varying_known_reals: ["hours_from_start"]
+    time_varying_unknown_categoricals: []
+    time_varying_unknown_reals: ["Return", "Close", "Volume USD"]
+
+  'crypto_daily': 
+    time_idx: 'days_from_start'
+    target: 'Close'
+    group_ids: ['Symbol']
+    static_categoricals: ['Symbol']
+    static_reals: []
+    time_varying_known_categoricals: ['day_of_week', 'day_of_month', 'week_of_year', 'month']
+    variable_groups: {}
+    time_varying_known_reals: ["days_from_start"]
+    time_varying_unknown_categoricals: []
+    time_varying_unknown_reals: ["Return", "Close", "Volume USD"]
 
 model:
   hidden_size: 160
@@ -80,6 +106,8 @@ experiment:
     btc_krw: 0.01
     btc_usd: 0.01
     crypto: 0.01
+    crypto_hourly: 0.01
+    crypto_daily: 0.01
   max_prediction_length: 5
   max_encoder_length:
     vol: 252
@@ -87,6 +115,8 @@ experiment:
     btc_krw: 252
     btc_usd: 252
     crypto: 252
+    crypto_hourly: 252
+    crypto_daily: 252
   symbol_boundary:
     '.SPX':
       'recession':
@@ -104,12 +134,16 @@ experiment:
     btc_krw: '2019'
     btc_usd: '2016' 
     crypto: '2016'
+    crypto_hourly: '2019'
+    crypto_daily: '2019'
   test_boundary:
     vol: '2018'
     stock_idx: '2019'
     btc_krw: '2020'
     btc_usd: '2018'
     crypto: '2017'
+    crypto_hourly: '2020'
+    crypto_daily: '2020'
   weights_summary: 'top'
   gradient_clip: 0.1
   limit_train_batches: 1.0

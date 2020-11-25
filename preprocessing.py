@@ -264,6 +264,7 @@ def preprocess(data_name, symbol=None):
                         data2['Volume'] = data2['Volume'].replace({'-': None})
                         data2['Volume'] = data2['Volume'].str.replace(',', '')
                         data2['Volume'].fillna(method='bfill', inplace=True)
+                        data2['Return'] = data2['Close'].pct_change()
                         data2 = data2.dropna()
                         data = pd.concat([data, data2], axis=0)
                 else:
@@ -278,6 +279,7 @@ def preprocess(data_name, symbol=None):
                     data['Volume'] = data['Volume'].replace({'-': None})
                     data['Volume'] = data['Volume'].str.replace(',', '')
                     data['Volume'].fillna(method='bfill', inplace=True)
+                    data['Return'] = data['Close'].pct_change()
                     data = data.dropna()
 
             # data preprocessing
@@ -298,6 +300,91 @@ def preprocess(data_name, symbol=None):
             print('Completed formatting, saving to {}'.format(output_file))
             data.to_csv(output_file, encoding='utf-8')
                 
+        else:
+            data = pd.read_csv(output_file, encoding='utf-8')
+            data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
+            data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
+            data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
+            data['month'] = data['month'].astype(str).astype('category')
+            data['year'] = data['year'].astype(str).astype('category')
+
+    elif data_name == 'crypto_hourly':
+        if not os.path.exists(output_file):
+            filenames = ['Bitfinex_BTCUSD_1h.csv', 'Bitfinex_ETHUSD_1h.csv', 'Bitfinex_LTCUSD_1h.csv']
+            data_list = []
+            for f in filenames:
+                data = pd.read_csv(os.path.join('/data3/finance', f), encoding='utf-8', skiprows=1)
+                data.rename(columns={'Date':'date'}, inplace=True)
+                data['date'] = data['date'].str.replace('-', '')
+                data['date'] = pd.to_datetime(data.date)
+                data = data.sort_values(by=['date'])
+                data = data[['date', 'Symbol', 'Open', 'High', 'Low', 'Close', 'Volume USD']]
+                data['Return'] = data['Close'].pct_change()
+                data = data.dropna()
+                data['hours_from_start'] = np.arange(len(data))
+                data_list.append(data)
+        
+            # data preprocessing
+            data = pd.concat(data_list)
+            data = data.reset_index()
+            dates = pd.to_datetime(data['date'].to_list())
+            data['hour'] = dates.hour.astype(str).astype('category')
+            data['day_of_week'] = dates.dayofweek.astype(str).astype('category')
+            data['day_of_month'] = dates.day.astype(str).astype('category')
+            data['week_of_year'] = dates.weekofyear.astype(str).astype('category')
+            data['month'] = dates.month.astype(str).astype('category')
+            data['year'] = dates.year.astype(str).astype('category')
+
+            # Processes log Close
+            close = data['Close'].copy()
+            data['log_Close'] = np.log(close)
+
+            # save
+            print('Completed formatting, saving to {}'.format(output_file))
+            data.to_csv(output_file, encoding='utf-8')
+
+        else:
+            data = pd.read_csv(output_file, encoding='utf-8')
+            data['hour'] = data['hour'].astype(str).astype('category')
+            data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
+            data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
+            data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
+            data['month'] = data['month'].astype(str).astype('category')
+            data['year'] = data['year'].astype(str).astype('category')
+
+    elif data_name == 'crypto_daily':
+        if not os.path.exists(output_file):
+            filenames = ['Bitfinex_BTCUSD_d.csv', 'Bitfinex_ETHUSD_d.csv', 'Bitfinex_LTCUSD_d.csv']
+            data_list = []
+            for f in filenames:
+                data = pd.read_csv(os.path.join('/data3/finance', f), encoding='utf-8', skiprows=1)
+                data.rename(columns={'Date':'date'}, inplace=True)
+                data['date'] = pd.to_datetime(data.date)
+                data = data.sort_values(by=['date'])
+                data = data[['date', 'Symbol', 'Open', 'High', 'Low', 'Close', 'Volume USD']]
+                data['Return'] = data['Close'].pct_change()
+                data = data.dropna()
+                data['days_from_start'] = np.arange(len(data))
+                data_list.append(data)
+        
+            # data preprocessing
+            data = pd.concat(data_list)
+            data = data.reset_index()
+            dates = pd.to_datetime(data['date'].to_list())
+            data['day_of_week'] = dates.dayofweek.astype(str).astype('category')
+            data['day_of_month'] = dates.day.astype(str).astype('category')
+            data['week_of_year'] = dates.weekofyear.astype(str).astype('category')
+            data['month'] = dates.month.astype(str).astype('category')
+            data['year'] = dates.year.astype(str).astype('category')
+
+            # Processes log Close
+            close = data['Close'].copy()
+            data['log_Close'] = np.log(close)
+
+            # save
+            print('Completed formatting, saving to {}'.format(output_file))
+            data.to_csv(output_file, encoding='utf-8')
+
         else:
             data = pd.read_csv(output_file, encoding='utf-8')
             data['day_of_week'] = data['day_of_week'].astype(str).astype('category')

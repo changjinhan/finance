@@ -15,13 +15,13 @@ from preprocessing import preprocess
 import warnings
 warnings.filterwarnings("ignore")
 
-# data_list = ['btc_krw', 'btc_usd', 'crypto', 'vol']
-data_list = ['vol']
+data_list = ['btc_krw', 'btc_usd', 'crypto', 'vol']
 
 for name in data_list:
+    print('-'*30, name)
     data = preprocess(name)
     if name == 'btc_krw':
-        ts = fill_missing_values(TimeSeries.from_dataframe(data[lambda x: x.date<='2020'], 'date', ['log_Close']), 'auto')
+        ts = fill_missing_values(TimeSeries.from_dataframe(data[lambda x: x.date<='2020'], 'date', ['Close']), 'auto')
         train, val = ts.split_after(pd.Timestamp('20191226'))
 
         models = [
@@ -41,7 +41,7 @@ for name in data_list:
             print(str(model) + " SMAPE: " + str(smape(pred_val, val)))
 
     elif name == 'btc_usd':
-        ts = fill_missing_values(TimeSeries.from_dataframe(data[lambda x: x.date<='2018'], 'date', ['log_Close']), 'auto')
+        ts = fill_missing_values(TimeSeries.from_dataframe(data[lambda x: x.date<='2018'], 'date', ['Close']), 'auto')
         train, val = ts.split_after(pd.Timestamp('20171226'))
 
         models = [
@@ -69,14 +69,14 @@ for name in data_list:
 
         models = [
                 AutoARIMA(),
-                # Prophet(),
-                # ExponentialSmoothing(),
-                # Theta(),
-                # FFT()
+                Prophet(),
+                ExponentialSmoothing(),
+                Theta(),
+                FFT()
         ]
 
         for coin in coin_name:
-            ts = fill_missing_values(TimeSeries.from_dataframe(data[lambda x: (x.Symbol == coin) & (x.date<='2017')], 'date', ['log_Close']), 'auto')
+            ts = fill_missing_values(TimeSeries.from_dataframe(data[lambda x: (x.Symbol == coin) & (x.date<='2017')], 'date', ['Close']), 'auto')
             train, val = ts.split_after(pd.Timestamp('20161226'))
             for model in models:
                 model.fit(train)
