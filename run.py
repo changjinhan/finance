@@ -36,7 +36,8 @@ args = parser.parse_args()
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
 os.environ["CUDA_VISIBLE_DEVICES"]=str(args.gpu_index)
 
-device = torch.device("cuda:%d" % args.gpu_index if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda:%d" % args.gpu_index if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 print('Current cuda device ', torch.cuda.current_device())
 hparam_file = os.path.join(os.getcwd(), "hparams.yaml")

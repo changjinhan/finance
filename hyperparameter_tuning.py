@@ -37,7 +37,8 @@ args = parser.parse_args()
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
 os.environ["CUDA_VISIBLE_DEVICES"]=str(args.gpu_index)
 
-device = torch.device("cuda:%d" % args.gpu_index if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda:%d" % args.gpu_index if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 print('Current cuda device ', torch.cuda.current_device())
 hparam_file = os.path.join(os.getcwd(), "hparams.yaml")
@@ -110,13 +111,14 @@ study = optimize_hyperparameters(
     model_path=optuna_path,
     log_dir=asset_path,
     n_trials=200,
-    max_epochs=100,
+    timeout=None,
+    max_epochs=50,
     gradient_clip_val_range=(0.01, 1.0),
     hidden_size_range=(8, 128),
     hidden_continuous_size_range=(8, 128),
     attention_head_size_range=(1, 4),
     learning_rate_range=(0.001, 0.1),
-    dropout_range=(0.1, 0.9),
+    dropout_range=(0.1, 0.7),
     trainer_kwargs=dict(limit_train_batches=1.0),
     reduce_on_plateau_patience=4,
     use_learning_rate_finder=False,  # use Optuna to find ideal learning rate or use in-built learning rate finder
