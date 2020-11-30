@@ -8,6 +8,7 @@ import random
 import argparse
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from utils.hparams import HParams
+from utils.metrics import normalized_quantile_loss
 from preprocessing import preprocess
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
@@ -130,7 +131,6 @@ else:
     )
 
     # create validation set (predict=True) which means to predict the last max_prediction_length points in time for each series
-    print(data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(val_boundary_low)) & (pd.to_datetime(x.date) <= pd.to_datetime(val_boundary_high))])
     validation = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(val_boundary_low)) & (pd.to_datetime(x.date) <= pd.to_datetime(val_boundary_high))], predict=True, stop_randomization=True)
 
     # create dataloaders for model
@@ -197,24 +197,23 @@ print('validation MAE: ', (actuals - predictions).abs().mean())
 
 # For testing, you should append test_step(), test_epoch_end() method in Basemodel class. (filepath: pytorch-forecasting > models > base_model.py)
 # Test
+best_model_path = trainer.checkpoint_callback.best_model_path
+print(f"best model path: {best_model_path}")
+best_tft = TemporalFusionTransformer.load_from_checkpoint(best_model_path)
+
 trainer.test(
     best_tft,
     test_dataloaders=test_dataloader, 
     verbose=True,
 )
+
 # calcualte quantile loss on test set
 best_tft.to(torch.device('cpu'))
 actuals = torch.cat([y for x, y in iter(test_dataloader)])
 raw_predictions = best_tft.predict(test_dataloader, mode='raw')
 raw_predictions = raw_predictions['prediction']
-# print(f'actuals: {actuals}')
-# print(f'raw_predictions: {raw_predictions}')
-q_loss = QuantileLoss(quantiles=[0.1, 0.5, 0.9])
-losses = q_loss.loss(y_pred = raw_predictions, target=actuals)
-losses = torch.mean(losses.reshape(-1, losses.shape[-1]), 0)
-# print(f'losses: {losses}')
-print(f'Quantile loss - p50: {losses[1]}, p90: {losses[2]}')
-
+normalized_loss = normalized_quantile_loss(actuals, raw_predictions)
+print(f'Normalized quantile loss - p10: {normalized_loss[0]}, p50: {normalized_loss[1]}, p90: {normalized_loss[2]}')
 
 ##### Visualizing Part #####
 image_root = os.path.join(logger.log_dir, 'images')

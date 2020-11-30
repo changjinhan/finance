@@ -110,7 +110,7 @@ study = optimize_hyperparameters(
     val_dataloader,
     model_path=optuna_path,
     log_dir=asset_path,
-    n_trials=200,
+    n_trials=None,
     timeout=None,
     max_epochs=50,
     gradient_clip_val_range=(0.01, 1.0),
@@ -118,8 +118,8 @@ study = optimize_hyperparameters(
     hidden_continuous_size_range=(8, 128),
     attention_head_size_range=(1, 4),
     learning_rate_range=(0.001, 0.1),
-    dropout_range=(0.1, 0.7),
-    trainer_kwargs=dict(limit_train_batches=1.0),
+    dropout_range=(0.1, 0.8),
+    trainer_kwargs=dict(limit_train_batches=30),
     reduce_on_plateau_patience=4,
     use_learning_rate_finder=False,  # use Optuna to find ideal learning rate or use in-built learning rate finder
 )
