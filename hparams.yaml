@@ -110,7 +110,7 @@ experiment:
     crypto_daily: 0.01
   max_prediction_length: 5
   max_encoder_length:
-    vol: 90
+    vol: 252
     stock_idx: 252
     btc_krw: 252
     btc_usd: 252

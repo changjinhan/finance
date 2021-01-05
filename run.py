@@ -201,6 +201,7 @@ best_model_path = trainer.checkpoint_callback.best_model_path
 print(f"best model path: {best_model_path}")
 best_tft = TemporalFusionTransformer.load_from_checkpoint(best_model_path)
 
+
 trainer.test(
     best_tft,
     test_dataloaders=test_dataloader, 
@@ -252,4 +253,4 @@ interpretation = best_tft.interpret_output(raw_predictions, reduction="sum")
 fig4_dict = best_tft.plot_interpretation(interpretation)
 for name in fig4_dict.keys():
     fig4_dict[name].savefig(os.path.join(image_root, f'{args.data}_interpretation_{name}.png'))
-
+    
