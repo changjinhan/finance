@@ -88,6 +88,18 @@ dataset_setting:
     time_varying_unknown_categoricals: []
     time_varying_unknown_reals: ["Return", "Close", "Volume USD"]
 
+  'sp500': 
+    time_idx: 'days_from_start'
+    target: 'Close'
+    group_ids: ['Symbol']
+    static_categoricals: ['Symbol']
+    static_reals: []
+    time_varying_known_categoricals: ['day_of_week', 'day_of_month', 'week_of_year', 'month']
+    variable_groups: {}
+    time_varying_known_reals: ["days_from_start"]
+    time_varying_unknown_categoricals: []
+    time_varying_unknown_reals: ["Close", "Volume"]
+
 model:
   hidden_size: 160
   attention_head_size: 1
@@ -108,6 +120,7 @@ experiment:
     crypto: 0.01
     crypto_hourly: 0.01
     crypto_daily: 0.01
+    sp500: 0.01
   max_prediction_length: 5
   max_encoder_length:
     vol: 252
@@ -117,6 +130,7 @@ experiment:
     crypto: 252
     crypto_hourly: 252
     crypto_daily: 252
+    sp500: 252
   symbol_boundary:
     '.SPX':
       'recession':
@@ -136,6 +150,7 @@ experiment:
     crypto: '2016'
     crypto_hourly: '2019'
     crypto_daily: '2019'
+    sp500: '2019'
   test_boundary:
     vol: '2018'
     stock_idx: '2019'
@@ -144,6 +159,7 @@ experiment:
     crypto: '2017'
     crypto_hourly: '2020'
     crypto_daily: '2020'
+    sp500: '2020'
   weights_summary: 'top'
   gradient_clip: 0.1
   limit_train_batches: 30
