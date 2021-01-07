@@ -431,6 +431,46 @@ def preprocess(data_name, symbol=None):
             data['month'] = data['month'].astype(str).astype('category')
             data['year'] = data['year'].astype(str).astype('category')
 
+    elif data_name == 'kospi':
+        if not os.path.exists(output_file):
+            kospi_path = '/data3/finance/kospi_price'
+            filenames = os.listdir(kospi_path)
+            data_list = []
+            for f in filenames:
+                data = pd.read_csv(os.path.join(kospi_path, f), encoding='utf-8')
+                if len(data) == 0: # 주가 데이터가 없는 경우
+                    continue
+                data.rename(columns={'Date':'date'}, inplace=True)
+                data['date'] = pd.to_datetime(data.date)
+                if data['date'].min() < pd.to_datetime('2018'): # 데이터가 너무 적은 것은 제외하기 위해 2018년 이전의 데이터가 있는 종목만 선택
+                    data = data.sort_values(by=['date'])
+                    # data['Return'] = data['Close'].pct_change()
+                    data = data.dropna()
+                    data['days_from_start'] = np.arange(len(data))
+                    data_list.append(data)
+            print(len(data_list))
+            # data preprocessing
+            data = pd.concat(data_list)
+            data = data.reset_index()
+            dates = pd.to_datetime(data['date'].to_list())
+            data['day_of_week'] = dates.dayofweek.astype(str).astype('category')
+            data['day_of_month'] = dates.day.astype(str).astype('category')
+            data['week_of_year'] = dates.weekofyear.astype(str).astype('category')
+            data['month'] = dates.month.astype(str).astype('category')
+            data['year'] = dates.year.astype(str).astype('category')
+
+            # save
+            print('Completed formatting, saving to {}'.format(output_file))
+            data.to_csv(output_file, encoding='utf-8')
+
+        else:
+            data = pd.read_csv(output_file, encoding='utf-8')
+            data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
+            data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
+            data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
+            data['month'] = data['month'].astype(str).astype('category')
+            data['year'] = data['year'].astype(str).astype('category')
+
     return data
 
 
