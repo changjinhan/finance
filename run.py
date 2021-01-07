@@ -26,19 +26,21 @@ warnings.filterwarnings("ignore")
 parser = argparse.ArgumentParser()
 parser.add_argument('--data', type=str, help='experiment data', default='vol')
 parser.add_argument('--symbol', type=str, help='stock symbol', default=None)
+parser.add_argument('--transfer', type=str, help='transfer model data', default=None)
 parser.add_argument('--idx', type=int, help='experiment number',  default=None)
 parser.add_argument('--ws', type=str, help='machine number', default='9')
 parser.add_argument('--gpu_index', '-g', type=int, default="0", help='GPU index')
 parser.add_argument('--ngpu', type=int, default=1, help='0 = CPU.')
 parser.add_argument('--seed', type=int, default=1)
+
 args = parser.parse_args()
 
 # GPU allocation
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
 os.environ["CUDA_VISIBLE_DEVICES"]=str(args.gpu_index)
 
-# device = torch.device("cuda:%d" % args.gpu_index if torch.cuda.is_available() else "cpu")
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:%d" % args.gpu_index if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 print('Current cuda device ', torch.cuda.current_device())
 hparam_file = os.path.join(os.getcwd(), "hparams.yaml")
@@ -174,6 +176,22 @@ tft = TemporalFusionTransformer.from_dataset(
     log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
     reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'],
 )
+
+##### Transfer learning #####
+# print(f"Initial TFT state dict: ", tft.state_dict)
+if args.transfer:
+    ckpt = torch.load(config.transfer_path[args.ws][args.transfer])
+    # print(f"checkpoint model state dict: {ckpt['state_dict']}")
+    pretrained_state_dict = {weights_tuple[0]: weights_tuple[1] for weights_tuple in ckpt['state_dict'].items()
+                            if ('lstm_encoder' in weights_tuple[0]) or ('lstm_decoder' in weights_tuple[0])}
+    # print(f"lstm encoder-decoder state dict: {pretrained_state_dict}")
+    tft.load_state_dict(pretrained_state_dict, strict=False)
+
+    # parameter load check
+    # for name, param in tft.named_parameters():
+        # if ('lstm_encoder' in name) or ('lstm_decoder' in name):
+        # print(name, param.detach().numpy())
+    print("transferring ended.")
 
 print(f"Number of parameters in network: {tft.size()/1e3:.1f}k")
 

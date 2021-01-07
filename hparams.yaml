@@ -92,7 +92,19 @@ dataset_setting:
     time_idx: 'days_from_start'
     target: 'Close'
     group_ids: ['Symbol']
-    static_categoricals: ['Symbol']
+    static_categoricals: ['Symbol', 'Sector']
+    static_reals: []
+    time_varying_known_categoricals: ['day_of_week', 'day_of_month', 'week_of_year', 'month']
+    variable_groups: {}
+    time_varying_known_reals: ["days_from_start"]
+    time_varying_unknown_categoricals: []
+    time_varying_unknown_reals: ["Close", "Volume"]
+
+  'kospi': 
+    time_idx: 'days_from_start'
+    target: 'Close'
+    group_ids: ['Symbol']
+    static_categoricals: ['Symbol', 'Sector']
     static_reals: []
     time_varying_known_categoricals: ['day_of_week', 'day_of_month', 'week_of_year', 'month']
     variable_groups: {}
@@ -121,6 +133,7 @@ experiment:
     crypto_hourly: 0.01
     crypto_daily: 0.01
     sp500: 0.01
+    kospi: 0.01
   max_prediction_length: 5
   max_encoder_length:
     vol: 252
@@ -131,6 +144,7 @@ experiment:
     crypto_hourly: 252
     crypto_daily: 252
     sp500: 252
+    kospi: 252
   symbol_boundary:
     '.SPX':
       'recession':
@@ -151,6 +165,7 @@ experiment:
     crypto_hourly: '2019'
     crypto_daily: '2019'
     sp500: '2019'
+    kospi: '2019'
   test_boundary:
     vol: '2018'
     stock_idx: '2019'
@@ -160,6 +175,7 @@ experiment:
     crypto_hourly: '2020'
     crypto_daily: '2020'
     sp500: '2020'
+    kospi: '2020'
   weights_summary: 'top'
   gradient_clip: 0.1
   limit_train_batches: 30
@@ -169,3 +185,7 @@ asset_root:
 
 optuna_root:
   '9': '/data3/finance/assets/cjhan/tft_logs/optuna_test'
+
+transfer_path:
+  '9':
+    'sp500': '/data3/finance/assets/cjhan/tft_logs/sp500/version_2/checkpoints/epoch=13.ckpt'
