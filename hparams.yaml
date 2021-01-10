@@ -189,3 +189,4 @@ optuna_root:
 transfer_path:
   '9':
     'sp500': '/data3/finance/assets/cjhan/tft_logs/sp500/version_2/checkpoints/epoch=13.ckpt'
+    'vol': '/data3/finance/assets/cjhan/tft_logs/vol/version_45/checkpoints/epoch=26.ckpt'

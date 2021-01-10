@@ -7,8 +7,12 @@
 # nohup python run.py --data=crypto --gpu_index=0 1>tft_crypto.log 2>&1 &
 # nohup python run.py --data=crypto_daily --gpu_index=0 1>tft_crypto_daily.log 2>&1 &
 # nohup python run.py --data=crypto_hourly --gpu_index=0 1>tft_crypto_hourly.log 2>&1 &
-# nohup python run.py --data=sp500 --gpu_index=0 1>./results/tft_sp500_sector_added.log 2>&1 &
-nohup python run.py --data=kospi --transfer=sp500 --gpu_index=0 1>./results/tft_kospi_pretrain.log 2>&1 &
+# nohup python run.py --data=sp500 --gpu_index=0 1>./results/tft_sp500_sector.log 2>&1 &
+nohup python run.py --data=kospi --gpu_index=1 1>./results/tft_kospi_1.log 2>&1 &
+nohup python run.py --data=kospi --gpu_index=1 1>./results/tft_kospi_2.log 2>&1 &
+
+# nohup python run.py --data=kospi --transfer=sp500 --gpu_index=0 1>./results/tft_kospi_pretrain_sp500_epoch_100.log 2>&1 &
+# nohup python run.py --data=kospi --transfer=vol --gpu_index=0 1>./results/tft_kospi_pretrain_vol_epoch_100.log 2>&1 &
 
 
 ### hyper parmameter tuning ###
