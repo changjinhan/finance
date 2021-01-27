@@ -7,16 +7,17 @@ import copy
 import random
 import argparse
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
+
 from utils.hparams import HParams
 from utils.metrics import normalized_quantile_loss
+from utils.models import SparseTemporalFusionTransformer
 from preprocessing import preprocess
+
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
-
 from pytorch_forecasting import TimeSeriesDataSet, TemporalFusionTransformer, Baseline
 from pytorch_forecasting.data import GroupNormalizer
-
 from pytorch_forecasting.metrics import PoissonLoss, QuantileLoss, SMAPE
 from pytorch_forecasting.models.temporal_fusion_transformer.tuning import optimize_hyperparameters
 
@@ -31,7 +32,7 @@ parser.add_argument('--idx', type=int, help='experiment number',  default=None)
 parser.add_argument('--ws', type=str, help='machine number', default='9')
 parser.add_argument('--gpu_index', '-g', type=int, default="0", help='GPU index')
 parser.add_argument('--ngpu', type=int, default=1, help='0 = CPU.')
-parser.add_argument('--seed', type=int, default=1)
+parser.add_argument('--seed', type=int, default=42)
 
 args = parser.parse_args()
 
@@ -41,8 +42,9 @@ os.environ["CUDA_VISIBLE_DEVICES"]=str(args.gpu_index)
 
 # device = torch.device("cuda:%d" % args.gpu_index if torch.cuda.is_available() else "cpu")
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-torch.cuda.set_device(device)
-print('Current cuda device ', torch.cuda.current_device())
+if device == "cuda:0":
+    torch.cuda.set_device(device)
+    print('Current cuda device ', torch.cuda.current_device())
 hparam_file = os.path.join(os.getcwd(), "hparams.yaml")
 
 config = HParams.load(hparam_file)
@@ -52,8 +54,8 @@ asset_root = config.asset_root[args.ws]
 if args.seed > 0:
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
     np.random.seed(args.seed)
     random.seed(args.seed)
 
@@ -143,7 +145,7 @@ else:
     val_dataloader = validation.to_dataloader(train=False, batch_size=batch_size, num_workers=0)
 
 # calculate baseline mean absolute error, i.e. predict next value as the last available value from the history
-actuals = torch.cat([y for x, y in iter(val_dataloader)])
+actuals = torch.cat([y[0] for x, y in iter(val_dataloader)])
 baseline_predictions = Baseline().predict(val_dataloader)
 print('baseline MAE: ', (actuals - baseline_predictions).abs().mean().item())
 
@@ -211,7 +213,7 @@ print(f"best model path: {best_model_path}")
 best_tft = TemporalFusionTransformer.load_from_checkpoint(best_model_path)
 
 # calcualte mean absolute error on validation set
-actuals = torch.cat([y for x, y in iter(val_dataloader)])
+actuals = torch.cat([y[0] for x, y in iter(val_dataloader)])
 predictions = best_tft.predict(val_dataloader)
 print('validation MAE: ', (actuals - predictions).abs().mean())
 
@@ -230,7 +232,7 @@ trainer.test(
 
 # calcualte quantile loss on test set
 best_tft.to(torch.device('cpu'))
-actuals = torch.cat([y for x, y in iter(test_dataloader)])
+actuals = torch.cat([y[0] for x, y in iter(test_dataloader)])
 raw_predictions = best_tft.predict(test_dataloader, mode='raw')
 raw_predictions = raw_predictions['prediction']
 normalized_loss = normalized_quantile_loss(actuals, raw_predictions)

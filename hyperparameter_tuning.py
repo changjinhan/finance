@@ -9,6 +9,7 @@ import random
 import argparse
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from utils.hparams import HParams
+from utils.metrics import normalized_quantile_loss
 from preprocessing import preprocess
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
@@ -31,6 +32,7 @@ parser.add_argument('--ws', type=str, help='machine number', default='9')
 parser.add_argument('--gpu_index', '-g', type=int, default="0", help='GPU index')
 parser.add_argument('--ngpu', type=int, default=1, help='0 = CPU.')
 parser.add_argument('--seed', type=int, default=1)
+
 args = parser.parse_args()
 
 # GPU allocation
@@ -52,6 +54,8 @@ optuna_path = os.path.join(asset_path, 'optuna_model')
 if args.seed > 0:
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
     np.random.seed(args.seed)
     random.seed(args.seed)
 
@@ -110,14 +114,14 @@ study = optimize_hyperparameters(
     val_dataloader,
     model_path=optuna_path,
     log_dir=asset_path,
-    n_trials=None,
+    n_trials=100,
     timeout=None,
-    max_epochs=50,
-    gradient_clip_val_range=(0.01, 1.0),
-    hidden_size_range=(8, 128),
-    hidden_continuous_size_range=(8, 128),
-    attention_head_size_range=(1, 4),
-    learning_rate_range=(0.001, 0.1),
+    max_epochs=100, #50
+    gradient_clip_val_range=(0.01, 1.0), #(0.01, 1.0)
+    hidden_size_range=(8, 160), #(8, 128)
+    hidden_continuous_size_range=(8, 128), #(8, 128)
+    attention_head_size_range=(1, 4), #(1, 4)
+    learning_rate_range=(0.001, 0.1), #(0.001, 0.1)
     dropout_range=(0.1, 0.8),
     trainer_kwargs=dict(limit_train_batches=30),
     reduce_on_plateau_patience=4,
@@ -142,14 +146,8 @@ best_tft.to(torch.device('cpu'))
 actuals = torch.cat([y for x, y in iter(test_dataloader)])
 raw_predictions = best_tft.predict(test_dataloader, mode='raw')
 raw_predictions = raw_predictions['prediction']
-# print(f'actuals: {actuals}')
-# print(f'raw_predictions: {raw_predictions}')
-q_loss = QuantileLoss(quantiles=[0.1, 0.5, 0.9])
-losses = q_loss.loss(y_pred = raw_predictions, target=actuals)
-losses = torch.mean(losses.reshape(-1, losses.shape[-1]), 0)
-# print(f'losses: {losses}')
-print(f'Quantile loss - p50: {losses[1]}, p90: {losses[2]}')
-
+normalized_loss = normalized_quantile_loss(actuals, raw_predictions)
+print(f'Normalized quantile loss - p10: {normalized_loss[0]}, p50: {normalized_loss[1]}, p90: {normalized_loss[2]}')
 
 '''
 # print example

@@ -114,15 +114,15 @@ dataset_setting:
 
 model:
   hidden_size: 160
-  attention_head_size: 1
+  attention_head_size: 1 #1
   dropout: 0.3
   hidden_continuous_size: 8
   output_size: 3  # 7 quantiles by default
   log_interval: 10  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
-  reduce_on_plateau_patience: 4
+  reduce_on_plateau_patience: 4 #4
 
 experiment:
-  epoch: 30
+  epoch: 100 # 100
   batch_size: 64
   lr:
     vol: 0.01
