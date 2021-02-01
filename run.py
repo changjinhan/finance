@@ -21,6 +21,13 @@ from pytorch_forecasting.data import GroupNormalizer
 from pytorch_forecasting.metrics import PoissonLoss, QuantileLoss, SMAPE
 from pytorch_forecasting.models.temporal_fusion_transformer.tuning import optimize_hyperparameters
 
+from matplotlib import pyplot as plt
+import matplotlib
+
+# setting for print out korean in figures 
+plt.rcParams["font.family"] = 'NanumGothicCoding'
+matplotlib.rcParams['axes.unicode_minus'] = False
+
 warnings.filterwarnings("ignore")
 
 # hyperparameter - using argparse and parameter module
@@ -30,7 +37,7 @@ parser.add_argument('--symbol', type=str, help='stock symbol', default=None)
 parser.add_argument('--transfer', type=str, help='transfer model data', default=None)
 parser.add_argument('--idx', type=int, help='experiment number',  default=None)
 parser.add_argument('--ws', type=str, help='machine number', default='9')
-parser.add_argument('--gpu_index', '-g', type=int, default="0", help='GPU index')
+parser.add_argument('--gpu_index', '-g', type=int, default=0, help='GPU index')
 parser.add_argument('--ngpu', type=int, default=1, help='0 = CPU.')
 parser.add_argument('--seed', type=int, default=42)
 
@@ -86,7 +93,7 @@ if args.symbol is None:
         time_varying_unknown_categoricals=config.dataset_setting[args.data]['time_varying_unknown_categoricals'],
         time_varying_unknown_reals=config.dataset_setting[args.data]['time_varying_unknown_reals'],
         target_normalizer=GroupNormalizer(groups=config.dataset_setting[args.data]['group_ids']),  # normalize by group
-        allow_missings=True, # allow time_idx missing
+        allow_missings=True, # allow time_idx missing; Forward fill strategy
         scalers={StandardScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
         add_relative_time_idx=True,
         add_target_scales=True,

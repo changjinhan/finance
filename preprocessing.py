@@ -446,7 +446,7 @@ def preprocess(data_name, symbol=None):
                     data = data.sort_values(by=['date'])
                     # data['Return'] = data['Close'].pct_change()
                     data = data.dropna()
-                    data['days_from_start'] = np.arange(len(data))
+                    data['days_from_start'] = np.arange(len(data)) # 주말의 공백을 없애고 주식 거래일을 연속적으로 처리
                     data_list.append(data)
             print(len(data_list))
             # data preprocessing
