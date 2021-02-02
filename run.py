@@ -11,6 +11,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from utils.hparams import HParams
 from utils.metrics import normalized_quantile_loss
 from utils.models import SparseTemporalFusionTransformer
+from utils.visualize import visualize
 from preprocessing import preprocess
 
 import pytorch_lightning as pl
@@ -230,7 +231,6 @@ best_model_path = trainer.checkpoint_callback.best_model_path
 print(f"best model path: {best_model_path}")
 best_tft = TemporalFusionTransformer.load_from_checkpoint(best_model_path)
 
-
 trainer.test(
     best_tft,
     test_dataloaders=test_dataloader, 
@@ -250,36 +250,6 @@ image_root = os.path.join(logger.log_dir, 'images')
 if not os.path.exists(image_root):
     os.makedirs(image_root)
 
-# raw predictions are a dictionary from which all kind of information including quantiles can be extracted
-raw_predictions, x = best_tft.predict(test_dataloader, mode="raw", return_x=True)
-for idx in range(len(raw_predictions['groups'])): 
-    try:
-        fig = best_tft.plot_prediction(x, raw_predictions, idx=idx, add_loss_to_title=True)
-        fig.savefig(os.path.join(image_root, f'{args.data}_sample_{idx}.png'))
-    except:
-        continue
-
-# prediction plot sort by SMAPE 
-predictions = best_tft.predict(test_dataloader)
-mean_losses = SMAPE(reduction="none")(predictions, actuals).mean(1)
-# print('mean losses', mean_losses)
-indices = torch.flip(mean_losses.argsort(descending=True), (0,))  # sort losses
-# print('indices: ', indices)
-for idx in range(len(raw_predictions['groups'])): 
-    try:
-        fig2 = best_tft.plot_prediction(x, raw_predictions, idx=indices[idx], add_loss_to_title=SMAPE())
-        fig2.savefig(os.path.join(image_root, f'{args.data}_best_SMAPE_{idx}.png'))
-    except:
-        continue
-
-predictions, x = best_tft.predict(test_dataloader, return_x=True)
-predictions_vs_actuals = best_tft.calculate_prediction_actual_by_variable(x, predictions)
-fig3_dict = best_tft.plot_prediction_actual_by_variable(predictions_vs_actuals)
-for name in fig3_dict.keys():
-    fig3_dict[name].savefig(os.path.join(image_root, f'{args.data}_prediction_vs_actuals_{name}.png'))
-
-interpretation = best_tft.interpret_output(raw_predictions, reduction="sum")
-fig4_dict = best_tft.plot_interpretation(interpretation)
-for name in fig4_dict.keys():
-    fig4_dict[name].savefig(os.path.join(image_root, f'{args.data}_interpretation_{name}.png'))
+visualize(training, test_dataloader, best_tft, image_root)
+print(f"figure path: {image_root}")
     

@@ -9,7 +9,7 @@
 # nohup python run.py --data=crypto_hourly --gpu_index=0 1>tft_crypto_hourly.log 2>&1 &
 # nohup python run.py --data=sp500 --gpu_index=0 1>./results/tft_sp500_epoch_100_2.log 2>&1 &
 # nohup python run.py --data=kospi --gpu_index=0 1>./results/tft_kospi_epoch_100_sparsemax.log 2>&1 &
-nohup python run.py --data=kospi --ngpu=0 1>./results/tft_kospi_epoch_100_allow_missing_false.log 2>&1 &
+nohup python run.py --data=kospi --ngpu=0 1>./results/tft_kospi_epoch_100_upgrade_visualizing.log 2>&1 &
 
 
 # nohup python run.py --data=kospi --transfer=sp500 --gpu_index=0 1>./results/tft_kospi_pretrain_sp500_epoch_100.log 2>&1 &
