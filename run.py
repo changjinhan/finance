@@ -171,8 +171,8 @@ trainer = pl.Trainer(
     weights_summary=config.experiment['weights_summary'],
     gradient_clip_val=config.experiment['gradient_clip'],
     limit_train_batches=config.experiment['limit_train_batches'],  # coment in for training, running valiation every 30 batches
-    callbacks=[lr_logger, early_stop_callback],
-    # callbacks=[lr_logger],
+    # callbacks=[lr_logger, early_stop_callback],
+    callbacks=[lr_logger],
     logger=logger,
 )
 
