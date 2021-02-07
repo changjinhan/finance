@@ -1,11 +1,12 @@
-
 from datetime import datetime
-from utils.strategy import SmaCross
+from utils.strategy import SmaCross, TFTpredict
 import backtrader as bt
 import locale
 
+stock_dict = {'삼성전자' : '005930.KS'}
+
 # Samsung Electronics['005930.KS'] data
-data = bt.feeds.YahooFinanceData(dataname='005930.KS', fromdate=datetime(2019, 1, 1), todate=datetime(2020, 3, 31))
+data = bt.feeds.YahooFinanceData(dataname=stock_dict['삼성전자'], fromdate=datetime(2020, 10, 21), todate=datetime(2021, 2, 6))
 
 cerebro = bt.Cerebro() # create a "Cerebro" engine instance
 cerebro.adddata(data)
