@@ -10,7 +10,9 @@
 # nohup python run.py --data=sp500 --gpu_index=0 1>./results/tft_sp500_epoch_100_2.log 2>&1 &
 # nohup python run.py --data=kospi --gpu_index=0 1>./results/tft_kospi_epoch_100_sparsemax.log 2>&1 &
 # nohup python run.py --data=kospi --ngpu=0 1>./results/tft_kospi_epoch_100_upgrade_visualizing.log 2>&1 &
-nohup python run.py --data=kospi --ngpu=0 1>./results/tft_kospi_epoch_500.log 2>&1 &
+# nohup python run.py --data=kospi --gpu_index=0 1>./results/tft_kospi_batch_512.log 2>&1 &
+# nohup python run.py --data=kospi --gpu_index=1 1>./results/tft_kospi_directional_quantile_loss.log 2>&1 &
+nohup python run.py --data=kospi --gpu_index=1 1>./results/tft_kospi_epoch_1000_patience_50_directional_alpha.log 2>&1 &
 
 
 # nohup python run.py --data=kospi --transfer=sp500 --gpu_index=0 1>./results/tft_kospi_pretrain_sp500_epoch_100.log 2>&1 &

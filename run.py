@@ -9,7 +9,7 @@ import argparse
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 from utils.hparams import HParams
-from utils.metrics import normalized_quantile_loss
+from utils.metrics import DirectionalQuantileLoss, normalized_quantile_loss
 from utils.models import SparseTemporalFusionTransformer
 from utils.visualize import visualize
 from preprocessing import preprocess
@@ -26,7 +26,7 @@ from matplotlib import pyplot as plt
 import matplotlib
 
 # setting for print out korean in figures 
-plt.rcParams["font.family"] = 'NanumGothicCoding'
+plt.rcParams["font.family"] = 'NanumGothic'
 matplotlib.rcParams['axes.unicode_minus'] = False
 
 warnings.filterwarnings("ignore")
@@ -38,7 +38,7 @@ parser.add_argument('--symbol', type=str, help='stock symbol', default=None)
 parser.add_argument('--transfer', type=str, help='transfer model data', default=None)
 parser.add_argument('--idx', type=int, help='experiment number',  default=None)
 parser.add_argument('--ws', type=str, help='machine number', default='9')
-parser.add_argument('--gpu_index', '-g', type=int, default=0, help='GPU index')
+parser.add_argument('--gpu_index', '-g', type=int, default=1, help='GPU index')
 parser.add_argument('--ngpu', type=int, default=1, help='0 = CPU.')
 parser.add_argument('--seed', type=int, default=42)
 
@@ -74,11 +74,12 @@ data = preprocess(args.data, args.symbol)
 max_prediction_length = config.experiment['max_prediction_length']
 max_encoder_length = config.experiment['max_encoder_length'][args.data]
 if args.symbol is None:
+    train_boundary = config.experiment['train_boundary'][args.data]
     valid_boundary = config.experiment['valid_boundary'][args.data]
     test_boundary = config.experiment['test_boundary'][args.data]
 
     training = TimeSeriesDataSet(
-        data[lambda x: pd.to_datetime(x.date) < pd.to_datetime(valid_boundary)],
+        data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(train_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime(valid_boundary))],
         time_idx=config.dataset_setting[args.data]['time_idx'],
         target=config.dataset_setting[args.data]['target'],
         group_ids=config.dataset_setting[args.data]['group_ids'],
@@ -170,7 +171,7 @@ trainer = pl.Trainer(
     gpus=args.ngpu,
     weights_summary=config.experiment['weights_summary'],
     gradient_clip_val=config.experiment['gradient_clip'],
-    limit_train_batches=config.experiment['limit_train_batches'],  # coment in for training, running valiation every 30 batches
+    limit_train_batches=config.experiment['limit_train_batches'],  # comment in for training, running valiation every 30 batches
     # callbacks=[lr_logger, early_stop_callback],
     callbacks=[lr_logger],
     logger=logger,
@@ -184,7 +185,8 @@ tft = TemporalFusionTransformer.from_dataset(
     dropout=config.model['dropout'],
     hidden_continuous_size=config.model['hidden_continuous_size'],
     output_size=config.model['output_size'],  # 7 quantiles by default
-    loss=QuantileLoss(quantiles=[0.1, 0.5, 0.9]),
+    # loss=QuantileLoss(quantiles=[0.1, 0.5, 0.9]),
+    loss=DirectionalQuantileLoss(quantiles=[0.1, 0.5, 0.9]),
     log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
     reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'],
 )
