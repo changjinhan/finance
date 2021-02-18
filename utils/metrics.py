@@ -29,9 +29,7 @@ class DirectionalQuantileLoss(MultiHorizonMetric):
             # append sum of loss
             losses.append((q_loss + torch.cat((torch.Tensor([0.]).to(device=y_pred.device), d_loss), 0).view(-1, target.size(1))).unsqueeze(-1))
         losses = torch.cat(losses, dim=2)
-
         return losses
-
 
 def normalized_quantile_loss(actuals: torch.Tensor, predictions: torch.Tensor, quantiles: List[float] = None) -> torch.Tensor:
     """Computes normalized quantile loss for torch tensors.
@@ -54,3 +52,11 @@ def normalized_quantile_loss(actuals: torch.Tensor, predictions: torch.Tensor, q
     reduced_q_loss = torch.sum(q_loss.reshape(-1, q_loss.shape[-1]), 0)
     normalized_loss = 2 * reduced_q_loss / normalizer
     return normalized_loss
+
+def mean_directional_accuracy(actuals: torch.Tensor, predictions: torch.Tensor) -> torch.Tensor:
+    """ Mean Directional Accuracy """
+    # actuals: torch.Size([756, 5])
+    # predictions: torch.Size([756, 5, 3])
+    actual = actuals
+    predicted = predictions[:, :, 1]
+    return torch.mean((torch.sign(actual[:, 1:] - actual[:, :-1]) == torch.sign(predicted[:, 1:] - predicted[:, :-1])).float())
