@@ -9,7 +9,7 @@ import argparse
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 from utils.hparams import HParams
-from utils.metrics import DirectionalQuantileLoss, normalized_quantile_loss
+from utils.metrics import DirectionalQuantileLoss, normalized_quantile_loss, mean_directional_accuracy
 from utils.models import SparseTemporalFusionTransformer
 from utils.visualize import visualize
 from preprocessing import preprocess
@@ -25,11 +25,11 @@ from pytorch_forecasting.models.temporal_fusion_transformer.tuning import optimi
 from matplotlib import pyplot as plt
 import matplotlib
 
-# setting for print out korean in figures 
-plt.rcParams["font.family"] = 'NanumGothic'
-matplotlib.rcParams['axes.unicode_minus'] = False
-
 warnings.filterwarnings("ignore")
+
+# setting for print out korean in figures 
+plt.rcParams["font.family"] = "NanumGothic"
+matplotlib.rcParams["axes.unicode_minus"] = False
 
 # hyperparameter - using argparse and parameter module
 parser = argparse.ArgumentParser()
@@ -52,7 +52,7 @@ os.environ["CUDA_VISIBLE_DEVICES"]=str(args.gpu_index)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 if device == "cuda:0":
     torch.cuda.set_device(device)
-    print('Current cuda device ', torch.cuda.current_device())
+    print("Current cuda device", torch.cuda.current_device())
 hparam_file = os.path.join(os.getcwd(), "hparams.yaml")
 
 config = HParams.load(hparam_file)
@@ -186,7 +186,7 @@ tft = TemporalFusionTransformer.from_dataset(
     hidden_continuous_size=config.model['hidden_continuous_size'],
     output_size=config.model['output_size'],  # 7 quantiles by default
     # loss=QuantileLoss(quantiles=[0.1, 0.5, 0.9]),
-    loss=DirectionalQuantileLoss(quantiles=[0.1, 0.5, 0.9]),
+    loss=DirectionalQuantileLoss(quantiles=[0.1, 0.5, 0.9], alpha=config.model['alpha']),
     log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
     reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'],
 )
@@ -216,17 +216,6 @@ trainer.fit(
     val_dataloaders=val_dataloader,
 )
 
-# load the best model according to the validation loss
-# (given that we use early stopping, this is not necessarily the last epoch)
-best_model_path = trainer.checkpoint_callback.best_model_path
-print(f"best model path: {best_model_path}")
-best_tft = TemporalFusionTransformer.load_from_checkpoint(best_model_path)
-
-# calcualte mean absolute error on validation set
-actuals = torch.cat([y[0] for x, y in iter(val_dataloader)])
-predictions = best_tft.predict(val_dataloader)
-print('validation MAE: ', (actuals - predictions).abs().mean())
-
 # For testing, you should append test_step(), test_epoch_end() method in Basemodel class. (filepath: pytorch-forecasting > models > base_model.py)
 # Test
 best_model_path = trainer.checkpoint_callback.best_model_path
@@ -239,13 +228,18 @@ trainer.test(
     verbose=True,
 )
 
-# calcualte quantile loss on test set
+# calculate quantile loss on test set
 best_tft.to(torch.device('cpu'))
 actuals = torch.cat([y[0] for x, y in iter(test_dataloader)])
 raw_predictions = best_tft.predict(test_dataloader, mode='raw')
 raw_predictions = raw_predictions['prediction']
 normalized_loss = normalized_quantile_loss(actuals, raw_predictions)
 print(f'Normalized quantile loss - p10: {normalized_loss[0]}, p50: {normalized_loss[1]}, p90: {normalized_loss[2]}')
+
+# calculate mean directional accuracy on test set
+mda = mean_directional_accuracy(actuals, raw_predictions)
+one_day_mda = mean_directional_accuracy(actuals[:, :2], raw_predictions[:, :2, :])
+print(f'MDA: {mda}, MDA-1day: {one_day_mda}')
 
 ##### Visualizing Part #####
 image_root = os.path.join(logger.log_dir, 'images')
