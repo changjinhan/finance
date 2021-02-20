@@ -119,11 +119,11 @@ model:
   hidden_continuous_size: 8
   output_size: 3  # 7 quantiles by default
   log_interval: 10  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
-  reduce_on_plateau_patience: 100 #4
+  reduce_on_plateau_patience: 4 #4
   alpha: 0.01
 
 experiment:
-  epoch: 500 # 50
+  epoch: 50 # 50
   batch_size: 64 # 64
   lr:
     vol: 0.01
@@ -166,7 +166,7 @@ experiment:
     crypto_hourly: '2000'
     crypto_daily: '2000'
     sp500: '2000'
-    kospi: '2000'
+    kospi: '2010'
   valid_boundary: 
     vol: '2016'
     stock_idx: '2016'
@@ -188,8 +188,8 @@ experiment:
     sp500: '2020'
     kospi: '2020'
   weights_summary: 'top'
-  gradient_clip: 0.1
-  limit_train_batches: 1.0
+  gradient_clip: 0.1 # 0.1
+  limit_train_batches: 30
   
 asset_root:
   '9': '/data3/finance/assets/cjhan/tft_logs/'
@@ -204,3 +204,6 @@ transfer_path:
     # 'kospi': '/data3/finance/assets/cjhan/tft_logs/kospi/version_192/checkpoints/epoch=487.ckpt'
     # 'kospi': '/data3/finance/assets/cjhan/tft_logs/kospi/version_213/checkpoints/epoch=478.ckpt'
     'kospi': '/data3/finance/assets/cjhan/tft_logs/kospi/version_214/checkpoints/epoch=499.ckpt'
+
+repeat_exp:
+  '9': '/data3/finance/assets/cjhan/repeat_exp/'

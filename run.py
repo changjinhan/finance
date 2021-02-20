@@ -9,7 +9,7 @@ import argparse
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 from utils.hparams import HParams
-from utils.metrics import DirectionalQuantileLoss, normalized_quantile_loss, mean_directional_accuracy
+from utils.metrics import DirectionalQuantileLoss, DilateLoss, DilateQuantileLoss, normalized_quantile_loss, mean_directional_accuracy
 from utils.models import SparseTemporalFusionTransformer
 from utils.visualize import visualize
 from preprocessing import preprocess
@@ -33,7 +33,7 @@ matplotlib.rcParams["axes.unicode_minus"] = False
 
 # hyperparameter - using argparse and parameter module
 parser = argparse.ArgumentParser()
-parser.add_argument('--data', type=str, help='experiment data', default='vol')
+parser.add_argument('--data', type=str, help='experiment data', default='kospi')
 parser.add_argument('--symbol', type=str, help='stock symbol', default=None)
 parser.add_argument('--transfer', type=str, help='transfer model data', default=None)
 parser.add_argument('--idx', type=int, help='experiment number',  default=None)
@@ -186,7 +186,9 @@ tft = TemporalFusionTransformer.from_dataset(
     hidden_continuous_size=config.model['hidden_continuous_size'],
     output_size=config.model['output_size'],  # 7 quantiles by default
     # loss=QuantileLoss(quantiles=[0.1, 0.5, 0.9]),
-    loss=DirectionalQuantileLoss(quantiles=[0.1, 0.5, 0.9], alpha=config.model['alpha']),
+    # loss=DirectionalQuantileLoss(quantiles=[0.1, 0.5, 0.9], alpha=config.model['alpha']),
+    # loss=DilateLoss(quantiles=[0.1, 0.5, 0.9]),
+    loss=DilateQuantileLoss(quantiles=[0.1, 0.5, 0.9]),
     log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
     reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'],
 )

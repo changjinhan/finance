@@ -8,6 +8,7 @@
 # folders
 notebooks/
 results/
+repeated_experiment/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,6 +1,7 @@
 import torch
 from typing import Dict, List, Union
 from pytorch_forecasting.metrics import MultiHorizonMetric, QuantileLoss
+from utils.DILATE.dilate_loss import dilate_loss
 
 class DirectionalQuantileLoss(MultiHorizonMetric):
     """
@@ -31,6 +32,85 @@ class DirectionalQuantileLoss(MultiHorizonMetric):
             losses.append((q_loss + torch.cat((torch.Tensor([0.]).to(device=y_pred.device), d_loss), 0).view(-1, target.size(1))).unsqueeze(-1))
         losses = torch.cat(losses, dim=2)
         return losses
+
+class DilateLoss(MultiHorizonMetric):
+    """
+    DILATE(DIstortion Loss with shApe and tImE)
+    Vincent Le Guen et al. Shape and Time Distortion Loss for Training Deep Time Series Forecasting Models. NeurIPS 2019. (https://arxiv.org/abs/1909.09020)
+    """
+    def __init__(
+        self,
+        quantiles: List[float] = [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98],
+        alpha: float = 0.5,
+        gamma: float = 0.01,
+        **kwargs,
+    ):
+        super().__init__(quantiles=quantiles, **kwargs)
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def loss(self, y_pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        device = y_pred.device
+        total_losses = []
+
+        # calculate DILATE
+        for i, q in enumerate(self.quantiles):
+            losses = []
+            for j in range(y_pred.shape[0]):
+                loss, loss_shape, loss_temporal = dilate_loss(y_pred[j,:,i].unsqueeze(0).unsqueeze(-1), target[j, :].unsqueeze(0).unsqueeze(-1), self.alpha, self.gamma, device)
+                # append sum of loss
+                loss = torch.repeat_interleave(loss.unsqueeze(-1).unsqueeze(-1), y_pred.shape[1], dim=0)
+                losses.append(loss.unsqueeze(0))
+            losses = torch.cat(losses, dim=0)
+            total_losses.append(losses)
+        total_losses = torch.cat(total_losses, dim=2)
+
+        return total_losses
+
+
+class DilateQuantileLoss(MultiHorizonMetric):
+    """
+    DILATE(DIstortion Loss with shApe and tImE) + Quantile Loss
+    Vincent Le Guen et al. Shape and Time Distortion Loss for Training Deep Time Series Forecasting Models. NeurIPS 2019. (https://arxiv.org/abs/1909.09020)
+    """
+    def __init__(
+        self,
+        quantiles: List[float] = [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98],
+        alpha: float = 0.5,
+        gamma: float = 0.01,
+        **kwargs,
+    ):
+        super().__init__(quantiles=quantiles, **kwargs)
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def loss(self, y_pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        device = y_pred.device
+
+        # calculate DILATE
+        total_dilate_losses = []
+        for i, q in enumerate(self.quantiles):
+            dilate_losses = []
+            for j in range(y_pred.shape[0]):
+                loss, loss_shape, loss_temporal = dilate_loss(y_pred[j,:,i].unsqueeze(0).unsqueeze(-1), target[j, :].unsqueeze(0).unsqueeze(-1), self.alpha, self.gamma, device)
+                # append sum of loss
+                loss = torch.repeat_interleave(loss.unsqueeze(-1).unsqueeze(-1), y_pred.shape[1], dim=0)
+                dilate_losses.append(loss.unsqueeze(0))
+            dilate_losses = torch.cat(dilate_losses, dim=0)
+            total_dilate_losses.append(dilate_losses)
+        total_dilate_losses = torch.cat(total_dilate_losses, dim=2)
+
+        # calculuate Quantile Loss
+        quantile_losses = []
+        for i, q in enumerate(self.quantiles):
+            errors = target - y_pred[..., i]
+            quantile_losses.append(torch.max((q - 1) * errors, q * errors).unsqueeze(-1))
+        total_quantile_losses = torch.cat(quantile_losses, dim=2)
+
+        losses = total_dilate_losses + total_quantile_losses
+
+        return losses
+
 
 def normalized_quantile_loss(actuals: torch.Tensor, predictions: torch.Tensor, quantiles: List[float] = None) -> torch.Tensor:
     """Computes normalized quantile loss for torch tensors.
