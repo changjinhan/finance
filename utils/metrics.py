@@ -78,14 +78,23 @@ class DilateQuantileLoss(MultiHorizonMetric):
         quantiles: List[float] = [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98],
         alpha: float = 0.5,
         gamma: float = 0.01,
+        weight: float = 0.01,
         **kwargs,
     ):
         super().__init__(quantiles=quantiles, **kwargs)
         self.alpha = alpha
         self.gamma = gamma
+        self.weight = weight
 
     def loss(self, y_pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         device = y_pred.device
+
+        # calculuate Quantile Loss
+        quantile_losses = []
+        for i, q in enumerate(self.quantiles):
+            errors = target - y_pred[..., i]
+            quantile_losses.append(torch.max((q - 1) * errors, q * errors).unsqueeze(-1))
+        total_quantile_losses = torch.cat(quantile_losses, dim=2)
 
         # calculate DILATE
         total_dilate_losses = []
@@ -100,14 +109,7 @@ class DilateQuantileLoss(MultiHorizonMetric):
             total_dilate_losses.append(dilate_losses)
         total_dilate_losses = torch.cat(total_dilate_losses, dim=2)
 
-        # calculuate Quantile Loss
-        quantile_losses = []
-        for i, q in enumerate(self.quantiles):
-            errors = target - y_pred[..., i]
-            quantile_losses.append(torch.max((q - 1) * errors, q * errors).unsqueeze(-1))
-        total_quantile_losses = torch.cat(quantile_losses, dim=2)
-
-        losses = total_dilate_losses + total_quantile_losses
+        losses = self.weight * total_quantile_losses + (1-self.weight) * total_dilate_losses
 
         return losses
 

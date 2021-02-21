@@ -7,9 +7,8 @@ from . import path_soft_dtw
 def dilate_loss(outputs, targets, alpha, gamma, device):
 	# outputs, targets: shape (batch_size, N_output, 1)
 	# minmax normalization
-	output_min, output_max = torch.min(outputs), torch.max(outputs)
-	outputs = (outputs - output_min) / (output_max - output_min + 1e-8)
-	targets = (targets - output_min) / (output_max - output_min + 1e-8)
+	outputs = (outputs - torch.min(outputs)) / (torch.max(outputs) - torch.min(outputs) + 1e-8)
+	targets = (targets - torch.min(targets)) / (torch.max(targets) - torch.min(targets) + 1e-8)
 
 	batch_size, N_output = outputs.shape[0:2]
 	loss_shape = 0
