@@ -1,4 +1,3 @@
-import sys
 import os
 import warnings
 import numpy as np
@@ -10,8 +9,9 @@ import argparse
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 from utils.hparams import HParams
-from utils.metrics import normalized_quantile_loss
+from utils.metrics import DirectionalQuantileLoss, DilateLoss, DilateQuantileLoss, normalized_quantile_loss, mean_directional_accuracy
 from utils.models import SparseTemporalFusionTransformer
+from utils.visualize import visualize
 from preprocessing import preprocess
 
 import pytorch_lightning as pl
@@ -25,63 +25,78 @@ from pytorch_forecasting.models.temporal_fusion_transformer.tuning import optimi
 from matplotlib import pyplot as plt
 import matplotlib
 
+warnings.filterwarnings("ignore")
+
 # setting for print out korean in figures 
 plt.rcParams["font.family"] = 'NanumGothic'
 matplotlib.rcParams['axes.unicode_minus'] = False
 
-warnings.filterwarnings("ignore")
+# hyperparameter - using argparse and parameter module
+parser = argparse.ArgumentParser()
+parser.add_argument('--data', type=str, help='experiment data', default='vol')
+parser.add_argument('--symbol', type=str, help='stock symbol', default=None)
+parser.add_argument('--transfer', type=str, help='transfer model data', default=None)
+parser.add_argument('--idx', type=int, help='experiment number',  default=None)
+parser.add_argument('--ws', type=str, help='machine number', default='9')
+parser.add_argument('--gpu_index', '-g', type=int, default=1, help='GPU index')
+parser.add_argument('--ngpu', type=int, default=1, help='0 = CPU.')
+parser.add_argument('--seed', type=int, default=42)
 
-# hyperparameter
-WS = '9'
-SEED = 42
-GPU_NUM = 0
-NGPU = 1
-DATA = 'kospi'
-TRANSFER = None
+args = parser.parse_args()
 
 # GPU allocation
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
-os.environ["CUDA_VISIBLE_DEVICES"]=str(GPU_NUM)
+os.environ["CUDA_VISIBLE_DEVICES"]=str(args.gpu_index)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 if device == "cuda:0":
     torch.cuda.set_device(device)
     print('Current cuda device ', torch.cuda.current_device())
 hparam_file = os.path.join(os.getcwd(), "hparams.yaml")
+
 config = HParams.load(hparam_file)
-asset_root = config.asset_root[WS]
+asset_root = config.asset_root[args.ws]
+
+# seed
+if args.seed > 0:
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
+    np.random.seed(args.seed)
+    random.seed(args.seed)
 
 # preprocessing
-data = preprocess(DATA)
+data = preprocess(args.data)
 
 # Training setting
 max_prediction_length = config.experiment['max_prediction_length']
 max_encoder_length = 63 # 252/4
 
-train_boundary = config.experiment['train_boundary'][DATA]
-valid_boundary = config.experiment['valid_boundary'][DATA]
-test_boundary = config.experiment['test_boundary'][DATA]
+train_boundary = config.experiment['train_boundary'][args.data]
+valid_boundary = config.experiment['valid_boundary'][args.data]
+test_boundary = config.experiment['test_boundary'][args.data]
 
 training = TimeSeriesDataSet(
     data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(train_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime(valid_boundary))],
-    time_idx=config.dataset_setting[DATA]['time_idx'],
-    target=config.dataset_setting[DATA]['target'],
-    group_ids=config.dataset_setting[DATA]['group_ids'],
+    time_idx=config.dataset_setting[args.data]['time_idx'],
+    target=config.dataset_setting[args.data]['target'],
+    group_ids=config.dataset_setting[args.data]['group_ids'],
 #     min_encoder_length=max_encoder_length // 2,  # keep encoder length long (as it is in the validation set)
     min_encoder_length=max_encoder_length,
     max_encoder_length=max_encoder_length,
     min_prediction_length=1,
     max_prediction_length=max_prediction_length,
-    static_categoricals=config.dataset_setting[DATA]['static_categoricals'],
-    static_reals=config.dataset_setting[DATA]['static_reals'],
-    time_varying_known_categoricals=config.dataset_setting[DATA]['time_varying_known_categoricals'],
-    variable_groups=config.dataset_setting[DATA]['variable_groups'],  # group of categorical variables can be treated as one variable
-    time_varying_known_reals=config.dataset_setting[DATA]['time_varying_known_reals'],
-    time_varying_unknown_categoricals=config.dataset_setting[DATA]['time_varying_unknown_categoricals'],
-    time_varying_unknown_reals=config.dataset_setting[DATA]['time_varying_unknown_reals'],
-    target_normalizer=GroupNormalizer(groups=config.dataset_setting[DATA]['group_ids']),  # normalize by group
+    static_categoricals=config.dataset_setting[args.data]['static_categoricals'],
+    static_reals=config.dataset_setting[args.data]['static_reals'],
+    time_varying_known_categoricals=config.dataset_setting[args.data]['time_varying_known_categoricals'],
+    variable_groups=config.dataset_setting[args.data]['variable_groups'],  # group of categorical variables can be treated as one variable
+    time_varying_known_reals=config.dataset_setting[args.data]['time_varying_known_reals'],
+    time_varying_unknown_categoricals=config.dataset_setting[args.data]['time_varying_unknown_categoricals'],
+    time_varying_unknown_reals=config.dataset_setting[args.data]['time_varying_unknown_reals'],
+    target_normalizer=GroupNormalizer(groups=config.dataset_setting[args.data]['group_ids']),  # normalize by group
     allow_missings=True, # allow time_idx missing
-    scalers={StandardScaler(): config.dataset_setting[DATA]['time_varying_unknown_reals']},
+    scalers={StandardScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
     add_relative_time_idx=True,
     add_target_scales=True,
     add_encoder_length=True,
@@ -89,7 +104,7 @@ training = TimeSeriesDataSet(
 
 # create validation set (predict=True) which means to predict the last max_prediction_length points in time for each series
 validation = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(valid_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime(test_boundary))], predict=True, stop_randomization=True)
-if DATA == 'vol':
+if args.data == 'vol':
     test = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime('2019.06.29'))], predict=True, stop_randomization=True)
 else:
     test = TimeSeriesDataSet.from_dataset(training, data[lambda x: pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)], predict=True, stop_randomization=True)
@@ -108,11 +123,11 @@ lr_logger = LearningRateMonitor()  # log the learning rate
 if not os.path.exists(asset_root):
     os.makedirs(asset_root)
 
-logger = TensorBoardLogger(save_dir=asset_root, name=DATA)  # logging results to a tensorboard
+logger = TensorBoardLogger(save_dir=asset_root, name=args.data)  # logging results to a tensorboard
 
 trainer = pl.Trainer(
     max_epochs=config.experiment['epoch'], # 50
-    gpus=NGPU,
+    gpus=args.ngpu,
     weights_summary=config.experiment['weights_summary'],
     gradient_clip_val=config.experiment['gradient_clip'],
     limit_train_batches=config.experiment['limit_train_batches'], # 30
@@ -123,7 +138,7 @@ trainer = pl.Trainer(
 
 tft = TemporalFusionTransformer.from_dataset(
     training,
-    learning_rate=config.experiment['lr'][DATA], 
+    learning_rate=config.experiment['lr'][args.data], 
     hidden_size=config.model['hidden_size'], 
     attention_head_size=config.model['attention_head_size'],
     dropout=config.model['dropout'],
@@ -152,28 +167,28 @@ print(f"best model path: {best_model_path}")
 ############################### 2nd stage ##########################################
 # Training setting
 max_prediction_length = config.experiment['max_prediction_length']
-max_encoder_length = config.experiment['max_encoder_length'][DATA]
+max_encoder_length = config.experiment['max_encoder_length'][args.data]
 
 training = TimeSeriesDataSet(
     data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(train_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime(valid_boundary))],
-    time_idx=config.dataset_setting[DATA]['time_idx'],
-    target=config.dataset_setting[DATA]['target'],
-    group_ids=config.dataset_setting[DATA]['group_ids'],
+    time_idx=config.dataset_setting[args.data]['time_idx'],
+    target=config.dataset_setting[args.data]['target'],
+    group_ids=config.dataset_setting[args.data]['group_ids'],
     min_encoder_length=max_encoder_length // 2,  # keep encoder length long (as it is in the validation set)
 #     min_encoder_length=max_encoder_length,
     max_encoder_length=max_encoder_length,
     min_prediction_length=1,
     max_prediction_length=max_prediction_length,
-    static_categoricals=config.dataset_setting[DATA]['static_categoricals'],
-    static_reals=config.dataset_setting[DATA]['static_reals'],
-    time_varying_known_categoricals=config.dataset_setting[DATA]['time_varying_known_categoricals'],
-    variable_groups=config.dataset_setting[DATA]['variable_groups'],  # group of categorical variables can be treated as one variable
-    time_varying_known_reals=config.dataset_setting[DATA]['time_varying_known_reals'],
-    time_varying_unknown_categoricals=config.dataset_setting[DATA]['time_varying_unknown_categoricals'],
-    time_varying_unknown_reals=config.dataset_setting[DATA]['time_varying_unknown_reals'],
-    target_normalizer=GroupNormalizer(groups=config.dataset_setting[DATA]['group_ids']),  # normalize by group
+    static_categoricals=config.dataset_setting[args.data]['static_categoricals'],
+    static_reals=config.dataset_setting[args.data]['static_reals'],
+    time_varying_known_categoricals=config.dataset_setting[args.data]['time_varying_known_categoricals'],
+    variable_groups=config.dataset_setting[args.data]['variable_groups'],  # group of categorical variables can be treated as one variable
+    time_varying_known_reals=config.dataset_setting[args.data]['time_varying_known_reals'],
+    time_varying_unknown_categoricals=config.dataset_setting[args.data]['time_varying_unknown_categoricals'],
+    time_varying_unknown_reals=config.dataset_setting[args.data]['time_varying_unknown_reals'],
+    target_normalizer=GroupNormalizer(groups=config.dataset_setting[args.data]['group_ids']),  # normalize by group
     allow_missings=True, # allow time_idx missing
-    scalers={StandardScaler(): config.dataset_setting[DATA]['time_varying_unknown_reals']},
+    scalers={StandardScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
     add_relative_time_idx=True,
     add_target_scales=True,
     add_encoder_length=True,
@@ -181,7 +196,7 @@ training = TimeSeriesDataSet(
 
 # create validation set (predict=True) which means to predict the last max_prediction_length points in time for each series
 validation = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(valid_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime(test_boundary))], predict=True, stop_randomization=True)
-if DATA == 'vol':
+if args.data == 'vol':
     test = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime('2019.06.29'))], predict=True, stop_randomization=True)
 else:
     test = TimeSeriesDataSet.from_dataset(training, data[lambda x: pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)], predict=True, stop_randomization=True)
@@ -194,12 +209,12 @@ test_dataloader = test.to_dataloader(train=False, batch_size=batch_size, num_wor
 
 lr_logger = LearningRateMonitor()  # log the learning rate
 
-logger = TensorBoardLogger(save_dir=asset_root, name=DATA)  # logging results to a tensorboard
+logger = TensorBoardLogger(save_dir=asset_root, name=args.data)  # logging results to a tensorboard
 
 trainer = pl.Trainer(
 #     max_epochs=config.experiment['epoch'],
     max_epochs=5,
-    gpus=NGPU,
+    gpus=args.ngpu,
     weights_summary=config.experiment['weights_summary'],
     gradient_clip_val=config.experiment['gradient_clip'],
 #     limit_train_batches=config.experiment['limit_train_batches'],  # coment in for training, running valiation every 30 batches
@@ -211,7 +226,7 @@ trainer = pl.Trainer(
 
 tft = TemporalFusionTransformer.from_dataset(
     training,
-    learning_rate=config.experiment['lr'][DATA], 
+    learning_rate=config.experiment['lr'][args.data], 
     hidden_size=config.model['hidden_size'], 
     attention_head_size=config.model['attention_head_size'],
     dropout=config.model['dropout'],
@@ -251,3 +266,16 @@ raw_predictions = best_tft.predict(test_dataloader, mode='raw')
 raw_predictions = raw_predictions['prediction']
 normalized_loss = normalized_quantile_loss(actuals, raw_predictions)
 print(f'Normalized quantile loss - p10: {normalized_loss[0]}, p50: {normalized_loss[1]}, p90: {normalized_loss[2]}')
+
+# calculate mean directional accuracy on test set
+mda = mean_directional_accuracy(actuals, raw_predictions)
+one_day_mda = mean_directional_accuracy(actuals[:, :2], raw_predictions[:, :2, :])
+print(f'MDA: {mda}, MDA-1day: {one_day_mda}')
+
+##### Visualizing Part #####
+image_root = os.path.join(logger.log_dir, 'images')
+if not os.path.exists(image_root):
+    os.makedirs(image_root)
+
+visualize(training, test_dataloader, best_tft, image_root)
+print(f"figure path: {image_root}")
