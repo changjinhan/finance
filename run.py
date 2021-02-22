@@ -33,28 +33,29 @@ matplotlib.rcParams["axes.unicode_minus"] = False
 
 # hyperparameter - using argparse and parameter module
 parser = argparse.ArgumentParser()
-parser.add_argument('--data', type=str, help='experiment data', default='kospi')
+parser.add_argument('--data', type=str, help='experiment data', default='vol')
 parser.add_argument('--symbol', type=str, help='stock symbol', default=None)
 parser.add_argument('--transfer', type=str, help='transfer model data', default=None)
 parser.add_argument('--idx', type=int, help='experiment number',  default=None)
 parser.add_argument('--ws', type=str, help='machine number', default='9')
-parser.add_argument('--gpu_index', '-g', type=int, default=1, help='GPU index')
-parser.add_argument('--ngpu', type=int, default=1, help='0 = CPU.')
+parser.add_argument('--gpu_index', '-g', type=int, help='GPU index', default=0)
+parser.add_argument('--ngpu', type=int, help='0 = CPU.', default=1)
+parser.add_argument('--distributed_backend', type=str, help="'dp' or 'ddp' for multi-gpu training", default=None)
 parser.add_argument('--seed', type=int, default=42)
 
 args = parser.parse_args()
 
 # GPU allocation
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
-os.environ["CUDA_VISIBLE_DEVICES"]=str(args.gpu_index)
+if args.gpu_index:
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
+    os.environ["CUDA_VISIBLE_DEVICES"]=str(args.gpu_index)
 
-# device = torch.device("cuda:%d" % args.gpu_index if torch.cuda.is_available() else "cpu")
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-if device == "cuda:0":
-    torch.cuda.set_device(device)
-    print("Current cuda device", torch.cuda.current_device())
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if device == "cuda:0":
+        torch.cuda.set_device(device)
+        print("Current cuda device", torch.cuda.current_device())
+
 hparam_file = os.path.join(os.getcwd(), "hparams.yaml")
-
 config = HParams.load(hparam_file)
 asset_root = config.asset_root[args.ws]
 
@@ -169,6 +170,7 @@ logger = TensorBoardLogger(save_dir=asset_root, name=args.data, version=args.idx
 trainer = pl.Trainer(
     max_epochs=config.experiment['epoch'],
     gpus=args.ngpu,
+    distributed_backend=args.distributed_backend, # 'ddp' for multi-gpu training
     weights_summary=config.experiment['weights_summary'],
     gradient_clip_val=config.experiment['gradient_clip'],
     limit_train_batches=config.experiment['limit_train_batches'],  # comment in for training, running valiation every 30 batches
@@ -185,10 +187,10 @@ tft = TemporalFusionTransformer.from_dataset(
     dropout=config.model['dropout'],
     hidden_continuous_size=config.model['hidden_continuous_size'],
     output_size=config.model['output_size'],  # 7 quantiles by default
-    # loss=QuantileLoss(quantiles=[0.1, 0.5, 0.9]),
+    loss=QuantileLoss(quantiles=[0.1, 0.5, 0.9]),
     # loss=DirectionalQuantileLoss(quantiles=[0.1, 0.5, 0.9], alpha=config.model['alpha']),
     # loss=DilateLoss(quantiles=[0.1, 0.5, 0.9]),
-    loss=DilateQuantileLoss(quantiles=[0.1, 0.5, 0.9]),
+    # loss=DilateQuantileLoss(quantiles=[0.1, 0.5, 0.9], weight=config.model['weight']),
     log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
     reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'],
 )
