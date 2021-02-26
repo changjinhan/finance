@@ -34,6 +34,7 @@ matplotlib.rcParams["axes.unicode_minus"] = False
 # hyperparameter - using argparse and parameter module
 parser = argparse.ArgumentParser()
 parser.add_argument('--data', type=str, help='experiment data', default='vol')
+parser.add_argument('--loss', type=str, help='loss function', default='quantile')
 parser.add_argument('--symbol', type=str, help='stock symbol', default=None)
 parser.add_argument('--transfer', type=str, help='transfer model data', default=None)
 parser.add_argument('--idx', type=int, help='experiment number',  default=None)
@@ -179,6 +180,13 @@ trainer = pl.Trainer(
     logger=logger,
 )
 
+if args.loss == 'directional':
+    tft_loss = DirectionalQuantileLoss(quantiles=[0.1, 0.5, 0.9], weight=config.model['weight'])
+elif args.loss == 'dilate':
+    tft_loss = DilateQuantileLoss(quantiles=[0.1, 0.5, 0.9], alpha=config.model['alpha'], weight=config.model['weight'])
+else:
+    tft_loss = QuantileLoss(quantiles=[0.1, 0.5, 0.9])
+
 tft = TemporalFusionTransformer.from_dataset(
     training,
     learning_rate=config.experiment['lr'][args.data], 
@@ -187,10 +195,7 @@ tft = TemporalFusionTransformer.from_dataset(
     dropout=config.model['dropout'],
     hidden_continuous_size=config.model['hidden_continuous_size'],
     output_size=config.model['output_size'],  # 7 quantiles by default
-    loss=QuantileLoss(quantiles=[0.1, 0.5, 0.9]),
-    # loss=DirectionalQuantileLoss(quantiles=[0.1, 0.5, 0.9], alpha=config.model['alpha']),
-    # loss=DilateLoss(quantiles=[0.1, 0.5, 0.9]),
-    # loss=DilateQuantileLoss(quantiles=[0.1, 0.5, 0.9], weight=config.model['weight']),
+    loss=tft_loss,
     log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
     reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'],
 )
@@ -224,7 +229,7 @@ trainer.fit(
 # Test
 best_model_path = trainer.checkpoint_callback.best_model_path
 print(f"best model path: {best_model_path}")
-best_tft = TemporalFusionTransformer.load_from_checkpoint(best_model_path)
+best_tft = TemporalFusionTransformer.load_from_checkpoint(best_model_path, map_location='cuda:0')
 
 trainer.test(
     best_tft,

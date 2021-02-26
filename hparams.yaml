@@ -119,13 +119,13 @@ model:
   hidden_continuous_size: 8
   output_size: 3  # 7 quantiles by default
   log_interval: 10  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
-  reduce_on_plateau_patience: 100 #4
-  alpha: 0.01
-  weight: 0.01
+  reduce_on_plateau_patience: 1000
+  alpha: 0.5 # (shape:time) ratio in DILATE
+  weight: 0.01 # weight for directional and dilate quantile loss
 
 experiment:
-  epoch: 500 # 50
-  batch_size: 64 # 64
+  epoch: 20
+  batch_size: 512 # (64, 512)
   lr:
     vol: 0.01
     stock_idx: 0.01
@@ -190,7 +190,7 @@ experiment:
     kospi: '2020'
   weights_summary: 'top'
   gradient_clip: 0.1 # 0.1
-  limit_train_batches: 30
+  limit_train_batches: 1.0
   
 asset_root:
   '9': '/data3/finance/assets/cjhan/tft_logs/'
@@ -202,8 +202,6 @@ transfer_path:
   '9':
     'sp500': '/data3/finance/assets/cjhan/tft_logs/sp500/version_2/checkpoints/epoch=13.ckpt'
     'vol': '/data3/finance/assets/cjhan/tft_logs/vol/version_45/checkpoints/epoch=26.ckpt'
-    # 'kospi': '/data3/finance/assets/cjhan/tft_logs/kospi/version_192/checkpoints/epoch=487.ckpt'
-    # 'kospi': '/data3/finance/assets/cjhan/tft_logs/kospi/version_213/checkpoints/epoch=478.ckpt'
     'kospi': '/data3/finance/assets/cjhan/tft_logs/kospi/version_214/checkpoints/epoch=499.ckpt'
 
 repeat_exp:
