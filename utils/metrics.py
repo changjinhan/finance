@@ -10,11 +10,11 @@ class DirectionalQuantileLoss(MultiHorizonMetric):
     def __init__(
         self,
         quantiles: List[float] = [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98],
-        alpha: float = 0.01,
+        weight: float = 0.01,
         **kwargs,
     ):
         super().__init__(quantiles=quantiles, **kwargs)
-        self.alpha = alpha
+        self.weight = weight
 
     def loss(self, y_pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         losses = []
@@ -27,9 +27,9 @@ class DirectionalQuantileLoss(MultiHorizonMetric):
             _y = target.view(-1, 1).expand(-1, 2)
             pred_diff = (_x[:, 0] - _x[:, 1].view(-1, 1)).diag(1)
             target_diff = (_y[:, 0] - _y[:, 1].view(-1, 1)).diag(1)
-            d_loss = self.alpha * abs(pred_diff - target_diff)
+            d_loss = abs(pred_diff - target_diff)
             # append sum of loss
-            losses.append((q_loss + torch.cat((torch.Tensor([0.]).to(device=y_pred.device), d_loss), 0).view(-1, target.size(1))).unsqueeze(-1))
+            losses.append(((1-self.weight) * q_loss + torch.cat((torch.Tensor([0.]).to(device=y_pred.device), self.weight * d_loss), 0).view(-1, target.size(1))).unsqueeze(-1))
         losses = torch.cat(losses, dim=2)
         return losses
 
