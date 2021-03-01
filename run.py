@@ -99,6 +99,7 @@ if args.symbol is None:
         target_normalizer=GroupNormalizer(groups=config.dataset_setting[args.data]['group_ids']),  # normalize by group
         allow_missings=True, # allow time_idx missing; Forward fill strategy
         scalers={StandardScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
+        # scalers={MinMaxScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
         add_relative_time_idx=True,
         add_target_scales=True,
         add_encoder_length=True,

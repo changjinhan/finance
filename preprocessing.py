@@ -471,6 +471,15 @@ def preprocess(data_name, symbol=None):
             data['month'] = data['month'].astype(str).astype('category')
             data['year'] = data['year'].astype(str).astype('category')
 
+    elif data_name == 'kospi200':
+        # preprocessed same with kospi
+        data = pd.read_csv(output_file, encoding='utf-8')
+        data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
+        data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
+        data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
+        data['month'] = data['month'].astype(str).astype('category')
+        data['year'] = data['year'].astype(str).astype('category')
+
     return data
 
 
