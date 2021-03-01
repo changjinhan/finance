@@ -121,7 +121,7 @@ model:
   log_interval: 10  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
   reduce_on_plateau_patience: 1000
   alpha: 0.5 # (shape:time) ratio in DILATE
-  weight: 0.01 # weight for directional and dilate quantile loss
+  weight: 0.1 # weight for directional and dilate quantile loss
 
 experiment:
   epoch: 20
