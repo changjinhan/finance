@@ -199,6 +199,7 @@ tft = TemporalFusionTransformer.from_dataset(
     loss=tft_loss,
     log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
     reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'],
+    optimizer=config.model['optimizer'], # Optimizer, "ranger", "adam" or "adamw". Defaults to "ranger".
 )
 
 ##### Transfer learning #####

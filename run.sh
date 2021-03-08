@@ -20,7 +20,17 @@
 # nohup python run.py --data=kospi --loss='quantile' --gpu_index=1 1>./results/tft_kospi_2010_epoch_50_batch_512_minmax.log 2>&1 &
 # nohup python run.py --data=kospi --loss='dilate' --gpu_index=0 1>./results/tft_kospi_2010_epoch_20_batch_512_dilatequantile_weight_001.log 2>&1 &
 # nohup python run.py --data=kospi --loss='quantile' --gpu_index=0 1>./results/tft_new_kospi_2010_epoch_20_batch_512.log 2>&1 &
-nohup python run.py --data=kospi200 --loss='quantile' --gpu_index=3 1>./results/tft_kospi200_epoch_50_batch_512.log 2>&1 &
+# nohup python run.py --data=kospi200 --loss='quantile' --gpu_index=3 1>./results/tft_kospi200_epoch_50_batch_512.log 2>&1 &
+# nohup python run.py --data=kospi200 --loss='directional' --gpu_index=0 1>./results/tft_kospi200_epoch_50_batch_512_directional_01_adam.log 2>&1 &
+# nohup python run.py --data=kospi200 --loss='quantile' --gpu_index=0 1>./results/tft_kospi200_epoch_30_batch_512.log 2>&1 &
+# nohup python run.py --data=kospi200 --loss='quantile' --gpu_index=2 1>./results/tft_kospi200_epoch_50_batch_512_adam.log 2>&1 &
+# nohup python run.py --data=kospi200 --loss='directional' --gpu_index=2 1>./results/tft_kospi200_epoch_30_batch_512_directional_01.log 2>&1 &
+# nohup python run.py --data=kospi200 --loss='dilate' --gpu_index=3 1>./results/tft_kospi200_pred_20_epoch_50_batch_512_dilate.log 2>&1 &
+# nohup python run.py --data=kospi200 --loss='quantile' --gpu_index=1 1>./results/tft_kospi200_pred_20_epoch_50_batch_512.log 2>&1 &
+# nohup python run.py --data=kospi200 --loss='directional' --gpu_index=2 1>./results/tft_kospi200_pred_20_epoch_50_batch_512_directional_01.log 2>&1 &
+# nohup python run.py --data=kospi200 --loss='quantile' --gpu_index=1 1>./results/tft_kospi200_pred_1_epoch_50_batch_512.log 2>&1 &
+# nohup python run.py --data=kospi200 --loss='quantile' --gpu_index=0 1>./results/tft_kospi200_epoch_50_batch_256_2year.log 2>&1 &
+nohup python run.py --data=kospi200 --loss='quantile' --gpu_index=1 1>./results/tft_kospi200_epoch_50_batch_512_all_reals_added.log 2>&1 &
 
 ## staged learning
 # nohup python staged_learning.py 1>./results/tft_staged_learning_epoch5_limit_train_batch_1.log 2>&1 &

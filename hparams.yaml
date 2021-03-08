@@ -122,7 +122,9 @@ dataset_setting:
     variable_groups: {}
     time_varying_known_reals: ["days_from_start"]
     time_varying_unknown_categoricals: []
-    time_varying_unknown_reals: ["Close", "Volume"]
+    # time_varying_unknown_reals: ["Close", "Volume"]
+    time_varying_unknown_reals: ["Open", "High", "Low", "Close", "Volume", "Change"]
+
 
 model:
   hidden_size: 160
@@ -131,12 +133,13 @@ model:
   hidden_continuous_size: 8
   output_size: 3  # 7 quantiles by default
   log_interval: 10  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
-  reduce_on_plateau_patience: 1000
+  reduce_on_plateau_patience: 1000 # 1000
   alpha: 0.5 # (shape:time) ratio in DILATE
   weight: 0.01 # weight for directional and dilate quantile loss
+  optimizer: 'ranger' # default: 'ranger'
 
 experiment:
-  epoch: 20
+  epoch: 50
   batch_size: 512 # (64, 512)
   lr:
     vol: 0.01
@@ -149,7 +152,7 @@ experiment:
     sp500: 0.01
     kospi: 0.01
     kospi200: 0.01
-  max_prediction_length: 5
+  max_prediction_length: 5 #5
   max_encoder_length:
     vol: 252
     stock_idx: 252
@@ -160,7 +163,7 @@ experiment:
     crypto_daily: 252
     sp500: 252
     kospi: 252
-    kospi200: 252
+    kospi200: 252 # 252, 504
   symbol_boundary:
     '.SPX':
       'recession':
@@ -193,7 +196,7 @@ experiment:
     crypto_daily: '2019'
     sp500: '2019'
     kospi: '2019'
-    kospi200: '2019'
+    kospi200: '2019' # 2018, 2019
   test_boundary:
     vol: '2018'
     stock_idx: '2019'

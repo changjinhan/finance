@@ -442,13 +442,12 @@ def preprocess(data_name, symbol=None):
                     continue
                 data.rename(columns={'Date':'date'}, inplace=True)
                 data['date'] = pd.to_datetime(data.date)
-                if data['date'].min() < pd.to_datetime('2018'): # 데이터가 너무 적은 것은 제외하기 위해 2018년 이전의 데이터가 있는 종목만 선택
+                if data['date'].min() < pd.to_datetime('2016'): # 데이터가 너무 적은 것은 제외하기 위해 2016년 이전의 데이터가 있는 종목만 선택
                     data = data.sort_values(by=['date'])
                     # data['Return'] = data['Close'].pct_change()
                     data = data.dropna()
                     data['days_from_start'] = np.arange(len(data)) # 주말의 공백을 없애고 주식 거래일을 연속적으로 처리
                     data_list.append(data)
-            print(len(data_list))
             # data preprocessing
             data = pd.concat(data_list)
             data = data.reset_index()
@@ -460,6 +459,7 @@ def preprocess(data_name, symbol=None):
             data['year'] = dates.year.astype(str).astype('category')
 
             # save
+            print(len(data['Symbol'].unique())) # 총 종목수
             print('Completed formatting, saving to {}'.format(output_file))
             data.to_csv(output_file, encoding='utf-8')
 
@@ -472,13 +472,62 @@ def preprocess(data_name, symbol=None):
             data['year'] = data['year'].astype(str).astype('category')
 
     elif data_name == 'kospi200':
-        # preprocessed same with kospi
-        data = pd.read_csv(output_file, encoding='utf-8')
-        data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
-        data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
-        data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
-        data['month'] = data['month'].astype(str).astype('category')
-        data['year'] = data['year'].astype(str).astype('category')
+        if not os.path.exists(output_file):
+            kospi = pd.read_csv('/data3/finance/kospi.csv')
+            kospi200_path = '/data3/finance/kospi200_listing/'
+            kospi200_list = pd.read_csv(os.path.join(kospi200_path, 'kospi200_20201218.csv'), encoding='euc-kr')
+            data = kospi[kospi['Symbol'].isin(kospi200_list['종목명'])]
+            data = data.set_index(data.columns[0])
+            
+            # data preprocessing
+            data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
+            data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
+            data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
+            data['month'] = data['month'].astype(str).astype('category')
+            data['year'] = data['year'].astype(str).astype('category')
+
+            # save
+            print(len(data['Symbol'].unique())) # 총 종목수
+            print('Completed formatting, saving to {}'.format(output_file))
+            data.to_csv(output_file, encoding='utf-8')
+
+        else:
+            # preprocessed same with kospi
+            data = pd.read_csv(output_file, encoding='utf-8')
+            data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
+            data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
+            data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
+            data['month'] = data['month'].astype(str).astype('category')
+            data['year'] = data['year'].astype(str).astype('category')
+
+    elif data_name == 'kospi200+AUDCHF':
+        if not os.path.exists(output_file):
+            # load AUD/CHF data
+            audchf = fdr.DataReader('AUD/CHF', '2000-01-04', '2021-02-26') # 홍콩달러/스위스프랑 환율
+            audchf = audchf.reset_index()
+            audchf = audchf.rename(columns={'Date':'date', 'Close': 'AUD_CHF_Close', 'Change': 'AUD_CHF_Change'})
+            audchf = audchf[['date', 'AUD_CHF_Close', 'AUD_CHF_Change']]
+
+            # load kospi200 data
+            kospi200 = pd.read_csv('/data3/finance/kospi200.csv')
+            kospi200['date'] = pd.to_datetime(kospi200['date'])
+            
+            # merge data
+            data = pd.merge(kospi200, audchf, how='inner', on='date')
+            data = data.sort_values(by=data.columns[0])
+
+            # save
+            print('Completed formatting, saving to {}'.format(output_file))
+            data.to_csv(output_file, encoding='utf-8')
+
+        else:
+            # preprocessed same with kospi
+            data = pd.read_csv(output_file, encoding='utf-8')
+            data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
+            data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
+            data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
+            data['month'] = data['month'].astype(str).astype('category')
+            data['year'] = data['year'].astype(str).astype('category')
 
     return data
 
