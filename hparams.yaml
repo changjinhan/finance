@@ -125,6 +125,30 @@ dataset_setting:
     # time_varying_unknown_reals: ["Close", "Volume"]
     time_varying_unknown_reals: ["Open", "High", "Low", "Close", "Volume", "Change"]
 
+  'kospi200+AUDCHF': 
+    time_idx: 'days_from_start'
+    target: 'Close'
+    group_ids: ['Symbol']
+    static_categoricals: ['Symbol', 'Sector']
+    static_reals: []
+    time_varying_known_categoricals: ['day_of_week', 'day_of_month', 'week_of_year', 'month']
+    variable_groups: {}
+    time_varying_known_reals: ["days_from_start"]
+    time_varying_unknown_categoricals: []
+    time_varying_unknown_reals: ["Close", "Volume", "Change", "AUD_CHF_Close", "AUD_CHF_Change"]
+
+  'kospi200+TI': 
+    time_idx: 'days_from_start'
+    target: 'Close'
+    group_ids: ['Symbol']
+    static_categoricals: ['Symbol', 'Sector']
+    static_reals: []
+    time_varying_known_categoricals: ['day_of_week', 'day_of_month', 'week_of_year', 'month']
+    variable_groups: {}
+    time_varying_known_reals: ["days_from_start"]
+    time_varying_unknown_categoricals: []
+    time_varying_unknown_reals: ['Close', 'Volume', 'Change', 'mc_mc', 'mc_mcdiff', 'mc_mcsig', 'pa_pa', 'pa_pad', 'pa_padi', 'pa_pau', 
+                                'pa_paui', 'bb_bbm', 'bb_bbh', 'bb_bbl', 'bb_bbhi', 'bb_bbli', 'so_so', 'so_sosi', 'roc', 'obv', 'fi'] # 21 features
 
 model:
   hidden_size: 160
@@ -139,7 +163,7 @@ model:
   optimizer: 'ranger' # default: 'ranger'
 
 experiment:
-  epoch: 50
+  epoch: 50 # 50
   batch_size: 512 # (64, 512)
   lr:
     vol: 0.01
@@ -152,6 +176,8 @@ experiment:
     sp500: 0.01
     kospi: 0.01
     kospi200: 0.01
+    kospi200+AUDCHF: 0.01
+    kospi200+TI: 0.01
   max_prediction_length: 5 #5
   max_encoder_length:
     vol: 252
@@ -164,6 +190,8 @@ experiment:
     sp500: 252
     kospi: 252
     kospi200: 252 # 252, 504
+    kospi200+AUDCHF: 252
+    kospi200+TI: 252
   symbol_boundary:
     '.SPX':
       'recession':
@@ -186,6 +214,8 @@ experiment:
     sp500: '2000'
     kospi: '2010'
     kospi200: '2010'
+    kospi200+AUDCHF: '2010'
+    kospi200+TI: '2010'
   valid_boundary: 
     vol: '2016'
     stock_idx: '2016'
@@ -197,6 +227,8 @@ experiment:
     sp500: '2019'
     kospi: '2019'
     kospi200: '2019' # 2018, 2019
+    kospi200+AUDCHF: '2019'
+    kospi200+TI: '2019'
   test_boundary:
     vol: '2018'
     stock_idx: '2019'
@@ -208,15 +240,21 @@ experiment:
     sp500: '2020'
     kospi: '2020'
     kospi200: '2020'
+    kospi200+AUDCHF: '2020'
+    kospi200+TI: '2020'
   weights_summary: 'top'
   gradient_clip: 0.1 # 0.1
-  limit_train_batches: 1.0
+  limit_train_batches: 30 # 1.0
   
 asset_root:
-  '9': '/data3/finance/assets/cjhan/tft_logs/'
+  '9': 
+    'tft': '/data3/finance/assets/cjhan/tft_logs/'
+    'deepar': '/data3/finance/assets/cjhan/deepar_logs/'
 
 optuna_root:
-  '9': '/data3/finance/assets/cjhan/tft_logs/optuna_test'
+  '9':
+    'tft': '/data3/finance/assets/cjhan/tft_logs/optuna_test'
+    'deepar': '/data3/finance/assets/cjhan/deepar_logs/optuna_test'
 
 transfer_path:
   '9':

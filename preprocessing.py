@@ -5,6 +5,12 @@ import pandas as pd
 import copy
 import FinanceDataReader as fdr
 
+from ta.utils import dropna
+from ta.trend import MACD, PSARIndicator
+from ta.volatility import BollingerBands
+from ta.momentum import StochasticOscillator, ROCIndicator
+from ta.volume import OnBalanceVolumeIndicator, ForceIndexIndicator
+
 warnings.filterwarnings("ignore")
 
 
@@ -516,9 +522,91 @@ def preprocess(data_name, symbol=None):
             data = pd.merge(kospi200, audchf, how='inner', on='date')
             data = data.sort_values(by=data.columns[0])
 
+            # data preprocessing
+            data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
+            data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
+            data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
+            data['month'] = data['month'].astype(str).astype('category')
+            data['year'] = data['year'].astype(str).astype('category')
+
             # save
             print('Completed formatting, saving to {}'.format(output_file))
-            data.to_csv(output_file, encoding='utf-8')
+            data.to_csv(output_file, encoding='utf-8', index=False)
+
+        else:
+            # preprocessed same with kospi
+            data = pd.read_csv(output_file, encoding='utf-8')
+            data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
+            data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
+            data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
+            data['month'] = data['month'].astype(str).astype('category')
+            data['year'] = data['year'].astype(str).astype('category')
+
+    elif data_name == 'kospi200+TI':
+        '''
+        ** Technical Indicators **
+        - Trend: Moving Average Convergence or Divergence(MACD), Parabolic Stop And Reverse(PSAR)
+        - Volatility: Bollinger Bands(BB)
+        - Momentum: Stochastic Oscillator(SO), Rate Of Change(ROC)
+        - Volume: On-Balance Volume(OBV), Force Index(FI)
+        '''
+        if not os.path.exists(output_file):
+            # load kospi200 data
+            data = pd.read_csv('/data3/finance/kospi200.csv')
+
+            ## Trend indicators
+            # Moving Average Convergence or Divergence(MACD)
+            indicator_macd = MACD(close=data["Close"])
+            data['mc_mc'] = indicator_macd.macd()
+            data['mc_mcdiff'] = indicator_macd.macd_diff()
+            data['mc_mcsig'] = indicator_macd.macd_signal()
+
+            # Parabolic Stop And Reverse(PSAR)
+            indicator_psar = PSARIndicator(high=data["High"], low=data["Low"], close=data["Close"])
+            data['pa_pa'] = indicator_psar.psar()
+            data['pa_pad'] = indicator_psar.psar_down()
+            data['pa_padi'] = indicator_psar.psar_down_indicator()
+            data['pa_pau'] = indicator_psar.psar_up()
+            data['pa_paui'] = indicator_psar.psar_up_indicator()
+
+            ## Volatility indicators
+            # Bollinger Bands(BB)
+            indicator_bb = BollingerBands(close=data["Close"], window=20, window_dev=2)
+            data['bb_bbm'] = indicator_bb.bollinger_mavg()
+            data['bb_bbh'] = indicator_bb.bollinger_hband()
+            data['bb_bbl'] = indicator_bb.bollinger_lband()
+            data['bb_bbhi'] = indicator_bb.bollinger_hband_indicator()
+            data['bb_bbli'] = indicator_bb.bollinger_lband_indicator()
+
+            ## Momentum indicators
+            # Stochastic Oscillator(SO)
+            indicator_so = StochasticOscillator(high=data["High"], low=data["Low"], close=data["Close"])
+            data['so_so'] =  indicator_so.stoch()
+            data['so_sosi'] = indicator_so.stoch_signal()
+
+            # Rate Of Change(ROC)
+            indicator_roc = ROCIndicator(close=data["Close"])
+            data['roc'] = indicator_roc.roc()
+
+            ## Volume indicators
+            # On-Balance Volume(OBV)
+            indicator_obv = OnBalanceVolumeIndicator(close=data["Close"], volume=data["Volume"])
+            data['obv'] = indicator_obv.on_balance_volume()
+
+            # Force Index(FI)
+            indicator_fi = ForceIndexIndicator(close=data["Close"], volume=data["Volume"])
+            data['fi'] = indicator_fi.force_index()
+
+            # data preprocessing
+            data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
+            data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
+            data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
+            data['month'] = data['month'].astype(str).astype('category')
+            data['year'] = data['year'].astype(str).astype('category')
+
+            # save
+            print('Completed formatting, saving to {}'.format(output_file))
+            data.to_csv(output_file, encoding='utf-8', index=False)
 
         else:
             # preprocessed same with kospi
