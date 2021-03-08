@@ -9,8 +9,7 @@ import argparse
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 from utils.hparams import HParams
-from utils.metrics import DirectionalQuantileLoss, DilateLoss, DilateQuantileLoss, normalized_quantile_loss, mean_directional_accuracy
-from utils.visualize import visualize
+from utils.metrics import normalized_quantile_loss, mean_directional_accuracy
 from preprocessing import preprocess
 
 import pytorch_lightning as pl
@@ -18,7 +17,7 @@ from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_forecasting import TimeSeriesDataSet, DeepAR, Baseline
 from pytorch_forecasting.data import GroupNormalizer
-from pytorch_forecasting.metrics import QuantileLoss, NormalDistributionLoss, SMAPE
+from pytorch_forecasting.metrics import QuantileLoss, LogNormalDistributionLoss, NormalDistributionLoss, SMAPE
 
 from matplotlib import pyplot as plt
 import matplotlib
@@ -39,7 +38,7 @@ parser.add_argument('--transfer', type=str, help='transfer model data', default=
 parser.add_argument('--idx', type=int, help='experiment number',  default=None)
 parser.add_argument('--ws', type=str, help='machine number', default='9')
 parser.add_argument('--gpu_index', '-g', type=int, help='GPU index', default=0)
-parser.add_argument('--ngpu', type=int, help='0 = CPU.', default=0)
+parser.add_argument('--ngpu', type=int, help='0 = CPU.', default=1)
 parser.add_argument('--distributed_backend', type=str, help="'dp' or 'ddp' for multi-gpu training", default=None)
 parser.add_argument('--seed', type=int, default=42)
 
@@ -77,6 +76,7 @@ max_encoder_length = config.experiment['max_encoder_length'][args.data]
 train_boundary = config.experiment['train_boundary'][args.data]
 valid_boundary = config.experiment['valid_boundary'][args.data]
 test_boundary = config.experiment['test_boundary'][args.data]
+
 training = TimeSeriesDataSet(
     data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(train_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime(valid_boundary))],
     time_idx=config.dataset_setting[args.data]['time_idx'],
@@ -95,7 +95,6 @@ training = TimeSeriesDataSet(
     target_normalizer=GroupNormalizer(groups=config.dataset_setting[args.data]['group_ids']),  # normalize by group
     allow_missings=True, # allow time_idx missing; Forward fill strategy
     scalers={StandardScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
-    # scalers={MinMaxScaler(): config.dataset_setting[args.data]['time_varying_unknown_reals']},
     add_relative_time_idx=True,
     add_target_scales=True,
     add_encoder_length=True,
@@ -139,19 +138,12 @@ trainer = pl.Trainer(
     logger=logger,
 )
 
-if args.loss == 'directional':
-    deepar_loss = DirectionalQuantileLoss(quantiles=[0.1, 0.5, 0.9], weight=config.model['weight'])
-elif args.loss == 'dilate':
-    deepar_loss = DilateQuantileLoss(quantiles=[0.1, 0.5, 0.9], alpha=config.model['alpha'], weight=config.model['weight'])
-else:
-    deepar_loss = NormalDistributionLoss(quantiles=[0.1, 0.5, 0.9])
-
 deepar = DeepAR.from_dataset(
     training,
     learning_rate=config.experiment['lr'][args.data], 
     hidden_size=config.model['hidden_size'], 
     dropout=config.model['dropout'],
-    loss=deepar_loss,
+    loss=NormalDistributionLoss(quantiles=[0.1, 0.5, 0.9]),
     log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
     reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'],
     optimizer=config.model['optimizer'], # Optimizer, "ranger", "adam" or "adamw". Defaults to "ranger".
@@ -170,19 +162,19 @@ trainer.fit(
 # Test
 best_model_path = trainer.checkpoint_callback.best_model_path
 print(f"best model path: {best_model_path}")
-best_tft = DeepAR.load_from_checkpoint(best_model_path, map_location='cuda:0')
+best_deepar = DeepAR.load_from_checkpoint(best_model_path, map_location='cuda:0')
 
 trainer.test(
-    best_tft,
+    best_deepar,
     test_dataloaders=test_dataloader, 
     verbose=True,
 )
 
 # calculate quantile loss on test set
-best_tft.to(torch.device('cpu'))
+best_deepar.to(torch.device('cpu'))
 actuals = torch.cat([y[0] for x, y in iter(test_dataloader)])
-raw_predictions = best_tft.predict(test_dataloader, mode='raw')
-raw_predictions = raw_predictions['prediction']
+raw_predictions = best_deepar.predict(test_dataloader, mode='quantiles')
+# raw_predictions = raw_predictions['prediction']
 normalized_loss = normalized_quantile_loss(actuals, raw_predictions)
 print(f'Normalized quantile loss - p10: {normalized_loss[0]}, p50: {normalized_loss[1]}, p90: {normalized_loss[2]}')
 
@@ -190,12 +182,3 @@ print(f'Normalized quantile loss - p10: {normalized_loss[0]}, p50: {normalized_l
 mda = mean_directional_accuracy(actuals, raw_predictions)
 one_day_mda = mean_directional_accuracy(actuals[:, :2], raw_predictions[:, :2, :])
 print(f'MDA: {mda}, MDA-1day: {one_day_mda}')
-
-##### Visualizing Part #####
-image_root = os.path.join(logger.log_dir, 'images')
-if not os.path.exists(image_root):
-    os.makedirs(image_root)
-
-visualize(training, test_dataloader, best_tft, image_root)
-print(f"figure path: {image_root}")
-    
