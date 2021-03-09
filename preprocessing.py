@@ -598,6 +598,9 @@ def preprocess(data_name, symbol=None):
             data['fi'] = indicator_fi.force_index()
 
             # data preprocessing
+            data = data.replace([np.inf, -np.inf], np.nan)
+            data = data.fillna(0)
+
             data['day_of_week'] = data['day_of_week'].astype(str).astype('category')
             data['day_of_month'] = data['day_of_month'].astype(str).astype('category')
             data['week_of_year'] = data['week_of_year'].astype(str).astype('category')
