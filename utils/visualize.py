@@ -9,7 +9,7 @@ from utils.models import SparseTemporalFusionTransformer
 from pytorch_forecasting import TimeSeriesDataSet, TemporalFusionTransformer, Baseline
 from pytorch_forecasting.metrics import QuantileLoss, SMAPE
 
-def visualize(dataset, dataloader, best_model, image_root) -> None:
+def visualize(dataset, dataloader, best_model, image_root, k=10) -> None:
     # raw predictions are a dictionary from which all kind of information including quantiles can be extracted
     actuals = torch.cat([y[0] for x, y in iter(dataloader)])
     raw_predictions, x = best_model.predict(dataloader, mode="raw", return_x=True)
@@ -18,6 +18,7 @@ def visualize(dataset, dataloader, best_model, image_root) -> None:
     mean_losses = 2*torch.sum(q_losses.reshape(q_losses.shape[0], -1), 1) / normalizer
     indices = torch.flip(mean_losses.argsort(descending=True), (0,))  # sort losses
 
+    # group_rank = [] # save the group rank for calculate Top-k MDA
     for idx in range(len(raw_predictions['groups'])): 
         group_name = []
         try:
@@ -27,7 +28,8 @@ def visualize(dataset, dataloader, best_model, image_root) -> None:
                 for name, val in embedding_labels[group_ids[i]].items():
                     if val == emb:
                         group_name.append(name)
-                    
+            # group_rank.append(group_name[0])
+            # save figure
             fig = best_model.plot_prediction(x, raw_predictions, idx=indices[idx], add_loss_to_title=True, group_name=group_name)
             fig.savefig(os.path.join(image_root, f'best_QLOSS_{idx}_{group_name}.png'))
         except:
@@ -38,6 +40,7 @@ def visualize(dataset, dataloader, best_model, image_root) -> None:
     mean_losses = SMAPE(reduction="none")(predictions, actuals).mean(1)
     indices = torch.flip(mean_losses.argsort(descending=True), (0,))  # sort losses
 
+    group_rank = [] # save the group rank for calculate Top-k MDA
     for idx in range(len(raw_predictions['groups'])): 
         group_name = []
         try:
@@ -47,7 +50,8 @@ def visualize(dataset, dataloader, best_model, image_root) -> None:
                 for name, val in embedding_labels[group_ids[i]].items():
                     if val == emb:
                         group_name.append(name)
-
+            group_rank.append(group_name[0])
+            # save figure
             fig2 = best_model.plot_prediction(x, raw_predictions, idx=indices[idx], add_loss_to_title=SMAPE(), group_name=group_name)
             fig2.savefig(os.path.join(image_root, f'best_SMAPE_{idx}_{group_name}.png'))
         except:
@@ -63,3 +67,5 @@ def visualize(dataset, dataloader, best_model, image_root) -> None:
     fig4_dict = best_model.plot_interpretation(interpretation)
     for name in fig4_dict.keys():
         fig4_dict[name].savefig(os.path.join(image_root, f'interpretation_{name}.png'))
+
+    return group_rank[:k]
