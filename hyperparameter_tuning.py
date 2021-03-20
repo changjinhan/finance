@@ -8,45 +8,59 @@ import copy
 import random
 import argparse
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
+
 from utils.hparams import HParams
-from utils.metrics import normalized_quantile_loss
+from utils.metrics import DirectionalQuantileLoss, DilateLoss, DilateQuantileLoss, normalized_quantile_loss, mean_directional_accuracy
+from utils.models import SparseTemporalFusionTransformer
+from utils.visualize import visualize
 from preprocessing import preprocess
+
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
-
 from pytorch_forecasting import TimeSeriesDataSet, TemporalFusionTransformer, Baseline
 from pytorch_forecasting.data import GroupNormalizer
-
 from pytorch_forecasting.metrics import PoissonLoss, QuantileLoss, SMAPE
 from pytorch_forecasting.models.temporal_fusion_transformer.tuning import optimize_hyperparameters
 
+from matplotlib import pyplot as plt
+import matplotlib
+
 warnings.filterwarnings("ignore")
+
+# setting for print out korean in figures 
+plt.rcParams["font.family"] = "NanumGothic"
+matplotlib.rcParams["axes.unicode_minus"] = False
 
 # hyperparameter - using argparse and parameter module
 parser = argparse.ArgumentParser()
 parser.add_argument('--data', type=str, help='experiment data', default='vol')
+parser.add_argument('--model', type=str, help='model name', default='tft')
+parser.add_argument('--loss', type=str, help='loss function', default='quantile')
 parser.add_argument('--symbol', type=str, help='stock symbol', default=None)
+parser.add_argument('--transfer', type=str, help='transfer model data', default=None)
 parser.add_argument('--idx', type=int, help='experiment number',  default=None)
 parser.add_argument('--ws', type=str, help='machine number', default='9')
-parser.add_argument('--gpu_index', '-g', type=int, default="0", help='GPU index')
-parser.add_argument('--ngpu', type=int, default=1, help='0 = CPU.')
-parser.add_argument('--seed', type=int, default=1)
+parser.add_argument('--gpu_index', '-g', type=int, help='GPU index', default=0)
+parser.add_argument('--ngpu', type=int, help='0 = CPU.', default=1)
+parser.add_argument('--distributed_backend', type=str, help="'dp' or 'ddp' for multi-gpu training", default=None)
+parser.add_argument('--seed', type=int, default=42)
 
 args = parser.parse_args()
 
 # GPU allocation
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
-os.environ["CUDA_VISIBLE_DEVICES"]=str(args.gpu_index)
+if args.gpu_index:
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   
+    os.environ["CUDA_VISIBLE_DEVICES"]=str(args.gpu_index)
 
-# device = torch.device("cuda:%d" % args.gpu_index if torch.cuda.is_available() else "cpu")
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-torch.cuda.set_device(device)
-print('Current cuda device ', torch.cuda.current_device())
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if device == "cuda:0":
+        torch.cuda.set_device(device)
+        print("Current cuda device", torch.cuda.current_device())
+
 hparam_file = os.path.join(os.getcwd(), "hparams.yaml")
-
 config = HParams.load(hparam_file)
-asset_root = config.asset_root[args.ws]
+asset_root = config.asset_root[args.ws][args.model]
 asset_path = os.path.join(asset_root, args.data)
 optuna_path = os.path.join(asset_path, 'optuna_model')
 
@@ -65,17 +79,18 @@ data = preprocess(args.data, args.symbol)
 # Training setting
 max_prediction_length = config.experiment['max_prediction_length']
 max_encoder_length = config.experiment['max_encoder_length'][args.data]
+train_boundary = config.experiment['train_boundary'][args.data]
 valid_boundary = config.experiment['valid_boundary'][args.data]
 test_boundary = config.experiment['test_boundary'][args.data]
 
 training = TimeSeriesDataSet(
-    data[lambda x: pd.to_datetime(x.date) < pd.to_datetime(valid_boundary)],
+    data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(train_boundary)) & (pd.to_datetime(x.date) < pd.to_datetime(valid_boundary))],
     time_idx=config.dataset_setting[args.data]['time_idx'],
     target=config.dataset_setting[args.data]['target'],
     group_ids=config.dataset_setting[args.data]['group_ids'],
     min_encoder_length=max_encoder_length // 2,  # keep encoder length long (as it is in the validation set)
     max_encoder_length=max_encoder_length,
-    min_prediction_length=1,
+    # min_prediction_length=1,
     max_prediction_length=max_prediction_length,
     static_categoricals=config.dataset_setting[args.data]['static_categoricals'],
     static_reals=config.dataset_setting[args.data]['static_reals'],
@@ -116,16 +131,17 @@ study = optimize_hyperparameters(
     log_dir=asset_path,
     n_trials=100,
     timeout=None,
-    max_epochs=100, #50
+    max_epochs=20, #50
     gradient_clip_val_range=(0.01, 1.0), #(0.01, 1.0)
     hidden_size_range=(8, 160), #(8, 128)
     hidden_continuous_size_range=(8, 128), #(8, 128)
     attention_head_size_range=(1, 4), #(1, 4)
     learning_rate_range=(0.001, 0.1), #(0.001, 0.1)
-    dropout_range=(0.1, 0.8),
-    trainer_kwargs=dict(limit_train_batches=30),
-    reduce_on_plateau_patience=4,
+    dropout_range=(0.1, 0.5),
+    # trainer_kwargs=dict(limit_train_batches=30),
+    reduce_on_plateau_patience=1000,
     use_learning_rate_finder=False,  # use Optuna to find ideal learning rate or use in-built learning rate finder
+    verbose=1,
 )
 
 # save study results - also we can resume tuning at a later point in time
@@ -141,13 +157,19 @@ for ckpt_file in os.listdir(os.path.join(optuna_path, "trial_"+str(study.best_tr
         best_model_path = os.path.join(os.path.join(optuna_path, "trial_"+str(study.best_trial.number)), ckpt_file)
 print(best_model_path)
 best_tft = TemporalFusionTransformer.load_from_checkpoint(best_model_path)
+
 # calcualte quantile loss on test set
 best_tft.to(torch.device('cpu'))
-actuals = torch.cat([y for x, y in iter(test_dataloader)])
+actuals = torch.cat([y[0] for x, y in iter(test_dataloader)])
 raw_predictions = best_tft.predict(test_dataloader, mode='raw')
 raw_predictions = raw_predictions['prediction']
 normalized_loss = normalized_quantile_loss(actuals, raw_predictions)
 print(f'Normalized quantile loss - p10: {normalized_loss[0]}, p50: {normalized_loss[1]}, p90: {normalized_loss[2]}')
+
+# calculate mean directional accuracy on test set
+mda = mean_directional_accuracy(actuals, raw_predictions)
+one_day_mda = mean_directional_accuracy(actuals[:, :2], raw_predictions[:, :2, :])
+print(f'MDA: {mda}, MDA-1day: {one_day_mda}')
 
 '''
 # print example
