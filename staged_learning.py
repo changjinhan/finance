@@ -34,12 +34,15 @@ matplotlib.rcParams['axes.unicode_minus'] = False
 # hyperparameter - using argparse and parameter module
 parser = argparse.ArgumentParser()
 parser.add_argument('--data', type=str, help='experiment data', default='vol')
+parser.add_argument('--model', type=str, help='model name', default='tft')
+parser.add_argument('--loss', type=str, help='loss function', default='quantile')
 parser.add_argument('--symbol', type=str, help='stock symbol', default=None)
 parser.add_argument('--transfer', type=str, help='transfer model data', default=None)
 parser.add_argument('--idx', type=int, help='experiment number',  default=None)
 parser.add_argument('--ws', type=str, help='machine number', default='9')
-parser.add_argument('--gpu_index', '-g', type=int, default=1, help='GPU index')
-parser.add_argument('--ngpu', type=int, default=1, help='0 = CPU.')
+parser.add_argument('--gpu_index', '-g', type=int, help='GPU index', default=0)
+parser.add_argument('--ngpu', type=int, help='0 = CPU.', default=1)
+parser.add_argument('--distributed_backend', type=str, help="'dp' or 'ddp' for multi-gpu training", default=None)
 parser.add_argument('--seed', type=int, default=42)
 
 args = parser.parse_args()
@@ -55,7 +58,7 @@ if device == "cuda:0":
 hparam_file = os.path.join(os.getcwd(), "hparams.yaml")
 
 config = HParams.load(hparam_file)
-asset_root = config.asset_root[args.ws]
+asset_root = config.asset_root[args.ws][args.model]
 
 # seed
 if args.seed > 0:
@@ -111,7 +114,7 @@ else:
 
 # create dataloaders for model
 # batch_size = config.experiment['batch_size']  # set this between 32 to 128
-batch_size = 256 # 64*4
+batch_size = 512 #128*4
 train_dataloader = training.to_dataloader(train=True, batch_size=batch_size, num_workers=0)
 val_dataloader = validation.to_dataloader(train=False, batch_size=batch_size, num_workers=0)
 test_dataloader = test.to_dataloader(train=False, batch_size=batch_size, num_workers=0)
@@ -130,24 +133,46 @@ trainer = pl.Trainer(
     gpus=args.ngpu,
     weights_summary=config.experiment['weights_summary'],
     gradient_clip_val=config.experiment['gradient_clip'],
-    limit_train_batches=config.experiment['limit_train_batches'], # 30
-#     callbacks=[lr_logger, early_stop_callback],
-    callbacks=[lr_logger],
+    callbacks=[lr_logger, early_stop_callback],
     logger=logger,
 )
 
-tft = TemporalFusionTransformer.from_dataset(
-    training,
-    learning_rate=config.experiment['lr'][args.data], 
-    hidden_size=config.model['hidden_size'], 
-    attention_head_size=config.model['attention_head_size'],
-    dropout=config.model['dropout'],
-    hidden_continuous_size=config.model['hidden_continuous_size'],
-    output_size=config.model['output_size'],  # 7 quantiles by default
-    loss=QuantileLoss(quantiles=[0.1, 0.5, 0.9]),
-    log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
-    reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'], # 4
-)
+if args.loss == 'directional':
+    tft_loss = DirectionalQuantileLoss(quantiles=[0.1, 0.5, 0.9], weight=config.model['weight'])
+elif args.loss == 'dilate':
+    tft_loss = DilateQuantileLoss(quantiles=[0.1, 0.5, 0.9], alpha=config.model['alpha'], weight=config.model['weight'])
+else:
+    tft_loss = QuantileLoss(quantiles=[0.1, 0.5, 0.9])
+
+if args.model == 'tft':
+    tft = TemporalFusionTransformer.from_dataset(
+        training,
+        learning_rate=config.experiment['lr'][args.data], 
+        hidden_size=config.model['hidden_size'], 
+        attention_head_size=config.model['attention_head_size'],
+        dropout=config.model['dropout'],
+        hidden_continuous_size=config.model['hidden_continuous_size'],
+        output_size=config.model['output_size'],  # 7 quantiles by default
+        loss=tft_loss,
+        log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
+        reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'],
+        optimizer=config.model['optimizer'], # Optimizer, "ranger", "adam" or "adamw". Defaults to "ranger".
+    )
+elif args.model == 'stft':
+    tft = SparseTemporalFusionTransformer.from_dataset(
+        training,
+        alpha=config.model['ent_ratio'],
+        learning_rate=config.experiment['lr'][args.data], 
+        hidden_size=config.model['hidden_size'], 
+        attention_head_size=config.model['attention_head_size'],
+        dropout=config.model['dropout'],
+        hidden_continuous_size=config.model['hidden_continuous_size'],
+        output_size=config.model['output_size'],  # 7 quantiles by default
+        loss=tft_loss,
+        log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
+        reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'],
+        optimizer=config.model['optimizer'], # Optimizer, "ranger", "adam" or "adamw". Defaults to "ranger".
+    )
 
 print(f"Number of parameters in network: {tft.size()/1e3:.1f}k")
 
@@ -159,10 +184,8 @@ trainer.fit(
 )
 
 # load the best model according to the validation loss
-# (given that we use early stopping, this is not necessarily the last epoch)
 best_model_path = trainer.checkpoint_callback.best_model_path
 print(f"best model path: {best_model_path}")
-# best_model_path = "/data3/finance/assets/cjhan/tft_logs/kospi/version_220/checkpoints/epoch=47.ckpt"
 
 ############################### 2nd stage ##########################################
 # Training setting
@@ -202,7 +225,7 @@ else:
     test = TimeSeriesDataSet.from_dataset(training, data[lambda x: pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)], predict=True, stop_randomization=True)
 
 # create dataloaders for model
-batch_size = config.experiment['batch_size']  # set this between 32 to 128
+batch_size = config.experiment['batch_size']  # 128
 train_dataloader = training.to_dataloader(train=True, batch_size=batch_size, num_workers=0)
 val_dataloader = validation.to_dataloader(train=False, batch_size=batch_size, num_workers=0)
 test_dataloader = test.to_dataloader(train=False, batch_size=batch_size, num_workers=0)
@@ -212,30 +235,44 @@ lr_logger = LearningRateMonitor()  # log the learning rate
 logger = TensorBoardLogger(save_dir=asset_root, name=args.data)  # logging results to a tensorboard
 
 trainer = pl.Trainer(
-#     max_epochs=config.experiment['epoch'],
     max_epochs=5,
     gpus=args.ngpu,
     weights_summary=config.experiment['weights_summary'],
     gradient_clip_val=config.experiment['gradient_clip'],
-#     limit_train_batches=config.experiment['limit_train_batches'],  # coment in for training, running valiation every 30 batches
-    limit_train_batches=1.0,  # coment in for training, running valiation every 30 batches
-#     callbacks=[lr_logger, early_stop_callback],
+    # callbacks=[lr_logger, early_stop_callback],
     callbacks=[lr_logger],
     logger=logger,
 )
 
-tft = TemporalFusionTransformer.from_dataset(
-    training,
-    learning_rate=config.experiment['lr'][args.data], 
-    hidden_size=config.model['hidden_size'], 
-    attention_head_size=config.model['attention_head_size'],
-    dropout=config.model['dropout'],
-    hidden_continuous_size=config.model['hidden_continuous_size'],
-    output_size=config.model['output_size'],  # 7 quantiles by default
-    loss=QuantileLoss(quantiles=[0.1, 0.5, 0.9]),
-    log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
-    reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'], # 4
-)
+if args.model == 'tft':
+    tft = TemporalFusionTransformer.from_dataset(
+        training,
+        learning_rate=config.experiment['lr'][args.data], 
+        hidden_size=config.model['hidden_size'], 
+        attention_head_size=config.model['attention_head_size'],
+        dropout=config.model['dropout'],
+        hidden_continuous_size=config.model['hidden_continuous_size'],
+        output_size=config.model['output_size'],  # 7 quantiles by default
+        loss=tft_loss,
+        log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
+        reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'],
+        optimizer=config.model['optimizer'], # Optimizer, "ranger", "adam" or "adamw". Defaults to "ranger".
+    )
+elif args.model == 'stft':
+    tft = SparseTemporalFusionTransformer.from_dataset(
+        training,
+        alpha=config.model['ent_ratio'],
+        learning_rate=config.experiment['lr'][args.data], 
+        hidden_size=config.model['hidden_size'], 
+        attention_head_size=config.model['attention_head_size'],
+        dropout=config.model['dropout'],
+        hidden_continuous_size=config.model['hidden_continuous_size'],
+        output_size=config.model['output_size'],  # 7 quantiles by default
+        loss=tft_loss,
+        log_interval=config.model['log_interval'],  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
+        reduce_on_plateau_patience=config.model['reduce_on_plateau_patience'],
+        optimizer=config.model['optimizer'], # Optimizer, "ranger", "adam" or "adamw". Defaults to "ranger".
+    )
 
 ckpt = torch.load(best_model_path)
 tft.load_state_dict(ckpt['state_dict'], strict=False)
@@ -259,8 +296,18 @@ trainer.test(
     verbose=True,
 )
 
-# calcualte quantile loss on test set
+##### Visualizing Part #####
 best_tft.to(torch.device('cpu'))
+
+image_root = os.path.join(logger.log_dir, 'images')
+if not os.path.exists(image_root):
+    os.makedirs(image_root)
+
+topk_groups = visualize(training, test_dataloader, best_tft, image_root)
+print(f"figure path: {image_root}")
+
+##### Quantitative Analysis Part #####
+# calculate quantile loss on test set
 actuals = torch.cat([y[0] for x, y in iter(test_dataloader)])
 raw_predictions = best_tft.predict(test_dataloader, mode='raw')
 raw_predictions = raw_predictions['prediction']
@@ -272,10 +319,13 @@ mda = mean_directional_accuracy(actuals, raw_predictions)
 one_day_mda = mean_directional_accuracy(actuals[:, :2], raw_predictions[:, :2, :])
 print(f'MDA: {mda}, MDA-1day: {one_day_mda}')
 
-##### Visualizing Part #####
-image_root = os.path.join(logger.log_dir, 'images')
-if not os.path.exists(image_root):
-    os.makedirs(image_root)
-
-visualize(training, test_dataloader, best_tft, image_root)
-print(f"figure path: {image_root}")
+# calculate mean directional accuracy on Top-10 set
+topk_test = TimeSeriesDataSet.from_dataset(training, data[lambda x: (pd.to_datetime(x.date) >= pd.to_datetime(test_boundary)) & (x['Symbol'].isin(topk_groups))], predict=True, stop_randomization=True)
+topk_test_dataloader = topk_test.to_dataloader(train=False, batch_size=batch_size, num_workers=0)
+topk_actuals = torch.cat([y[0] for x, y in iter(topk_test_dataloader)])
+topk_raw_predictions = best_tft.predict(topk_test_dataloader, mode='raw')
+topk_raw_predictions = topk_raw_predictions['prediction']
+topk_mda = mean_directional_accuracy(topk_actuals, topk_raw_predictions)
+topk_one_day_mda = mean_directional_accuracy(topk_actuals[:, :2], topk_raw_predictions[:, :2, :])
+print(f'Top10 Symbols: {topk_groups}')
+print(f'(Top10) MDA: {topk_mda}, (Top10) MDA-1day: {topk_one_day_mda}')
