@@ -17,7 +17,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_forecasting import Baseline, NBeats, TimeSeriesDataSet
 from pytorch_forecasting.data import GroupNormalizer, NaNLabelEncoder
 
-from pytorch_forecasting.metrics import PoissonLoss, QuantileLoss, SMAPE
+from pytorch_forecasting.metrics import PoissonLoss, QuantileLoss, SMAPE, NormalDistributionLoss
 
 warnings.filterwarnings("ignore")
 
@@ -90,7 +90,7 @@ val_dataloader = validation.to_dataloader(train=False, batch_size=batch_size, nu
 test_dataloader = test.to_dataloader(train=False, batch_size=batch_size, num_workers=0)
 
 # calculate baseline absolute error
-actuals = torch.cat([y for x, y in iter(val_dataloader)])
+actuals = torch.cat([y[0] for x, y in iter(val_dataloader)])
 baseline_predictions = Baseline().predict(val_dataloader)
 print('baseline SMAPE: ', SMAPE()(baseline_predictions, actuals))
 
@@ -103,11 +103,11 @@ if not os.path.exists(asset_root):
 logger = TensorBoardLogger(save_dir=asset_root, name=args.data, version=args.idx)  # logging results to a tensorboard
 
 trainer = pl.Trainer(
-    max_epochs=100,
+    max_epochs=1, # 100
     gpus=args.ngpu,
     weights_summary=config.experiment['weights_summary'],
     gradient_clip_val=config.experiment['gradient_clip'],
-    limit_train_batches=config.experiment['limit_train_batches'],  # coment in for training, running valiation every 30 batches
+    limit_train_batches= 10, #config.experiment['limit_train_batches'],  # coment in for training, running valiation every 30 batches
     callbacks=[lr_logger, early_stop_callback],
     # callbacks=[lr_logger],
     logger=logger,
@@ -139,7 +139,7 @@ print(f"best model path: {best_model_path}")
 best_nbeats = NBeats.load_from_checkpoint(best_model_path)
 
 # calcualte SMAPE on validation set
-actuals = torch.cat([y for x, y in iter(val_dataloader)])
+actuals = torch.cat([y[0] for x, y in iter(val_dataloader)])
 predictions = best_nbeats.predict(val_dataloader)
 print('validation SMAPE: ', SMAPE()(predictions, actuals))
 
@@ -153,7 +153,7 @@ trainer.test(
 
 # calcualte quantile loss on test set
 best_nbeats.to(torch.device('cpu'))
-actuals = torch.cat([y for x, y in iter(test_dataloader)])
+actuals = torch.cat([y[0] for x, y in iter(test_dataloader)])
 raw_predictions = best_nbeats.predict(test_dataloader, mode='raw')
 raw_predictions = raw_predictions['prediction']
 print('test prediction: ', raw_predictions)
