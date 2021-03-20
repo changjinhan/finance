@@ -89,8 +89,9 @@ class SmaCross(bt.Strategy):
 
 class TFTpredict(bt.Strategy):
     params = dict(
-        data = 'kospi', # period for the fast moving average
-        symbol = '삼성전자' # period for the slow moving average
+        data = 'kospi200+TI',
+        loss = 'quantile' ,
+        symbol = '삼성전자'
     )
 
     def log(self, txt, dt=None):
@@ -99,10 +100,10 @@ class TFTpredict(bt.Strategy):
         print('%s, %s' % (dt.isoformat(), txt))
 
     def __init__(self):
-        self.dataclose = self.datas[0].close # Keep a reference to the "close" line in the data[0] dataseries
+        self.dataclose = self.datas[0].adjclose # Keep a reference to the "close" line in the data[0] dataseries
         self.data = preprocess(self.p.data)
         self.symbol = self.p.symbol
-        self.ckpt_path = config.transfer_path['9'][self.p.data]
+        self.ckpt_path = config.backtest['9']['data'][self.p.data]['loss'][self.p.loss]['ckpt']
         self.training = TimeSeriesDataSet(
                             self.data[self.data['Symbol'] == self.symbol],
                             time_idx=config.dataset_setting[self.p.data]['time_idx'],
@@ -165,22 +166,28 @@ class TFTpredict(bt.Strategy):
         testset = TimeSeriesDataSet.from_dataset(self.training, test_data, predict=True, stop_randomization=True)
         test_dataloader = testset.to_dataloader(train=False, batch_size=config.experiment['batch_size'], num_workers=0)
         predictions = self.model.predict(test_dataloader)
+        predictions = predictions.squeeze(0)
+        tomorrow_trend = torch.sign(predictions[1:] - predictions[:-1])[0] # 1: up, -1: down, 0: sideway(horizontal)
 
         # Simply log the closing price of the series from the reference
-        self.log('Close, %.2f' % self.dataclose[0])
+        self.log('Close, %.2f, Trend, %d' % (self.dataclose[0], tomorrow_trend))
+        # self.log('Trend, %d' % tomorrow_trend)
 
         # Check if an order is pending ... if yes, we cannot send a 2nd one
         if self.order:
             return
 
         if not self.position: # not in the market
-            if (predictions > self.dataclose[0]).all(): # if all quantile 50 predictions are bigger than current close
+            # if (predictions > self.dataclose[0]).all(): # if all quantile 50 predictions are bigger than current close
+            if (predictions[0] > self.dataclose[0]) and (tomorrow_trend == 1): # if up trend
                 # print("predictions", predictions)
                 # print("current", self.dataclose[0])
                 available_stocks = int(self.broker.getcash()/self.dataclose[0]) # available buying size
                 self.order = self.buy(size=available_stocks) # buying order
                 self.log('BUY CREATE, %.2f' % self.dataclose[0])
 
-        elif (predictions < self.dataclose[0]).all(): # if all quantile 50 predictions are smaller than current close
+        # elif (predictions < self.dataclose[0]).all(): # if all quantile 50 predictions are smaller than current close
+        # elif (predictions[0] < self.dataclose[0]): # if down trend
+        elif (tomorrow_trend == -1): # if down trend
             self.order = self.close() # close the position
             self.log('SELL CREATE, %.2f' % self.dataclose[0])
