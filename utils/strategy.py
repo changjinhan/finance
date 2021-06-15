@@ -13,12 +13,13 @@ import torch
 from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler
 from pytorch_forecasting import TimeSeriesDataSet, TemporalFusionTransformer
+from utils.models import SparseTemporalFusionTransformer
 from pytorch_forecasting.data import GroupNormalizer
 from preprocessing import preprocess
 from utils.hparams import HParams
 
 
-hparam_file = os.path.join(os.getcwd(), "hparams.yaml")
+hparam_file = "/home/cjhan/projects/finance/hparams.yaml"
 config = HParams.load(hparam_file)
 
 class SmaCross(bt.Strategy):
@@ -90,7 +91,8 @@ class SmaCross(bt.Strategy):
 class TFTpredict(bt.Strategy):
     params = dict(
         data = 'kospi200+TI',
-        loss = 'quantile' ,
+        model = 'TFT',
+        loss = 'quantile',
         symbol = '삼성전자'
     )
 
@@ -103,7 +105,7 @@ class TFTpredict(bt.Strategy):
         self.dataclose = self.datas[0].adjclose # Keep a reference to the "close" line in the data[0] dataseries
         self.data = preprocess(self.p.data)
         self.symbol = self.p.symbol
-        self.ckpt_path = config.backtest['9']['data'][self.p.data]['loss'][self.p.loss]['ckpt']
+        self.ckpt_path = config.backtest['9']['data'][self.p.data]['model'][self.p.model]['loss'][self.p.loss]['ckpt']
         self.training = TimeSeriesDataSet(
                             self.data[self.data['Symbol'] == self.symbol],
                             time_idx=config.dataset_setting[self.p.data]['time_idx'],
@@ -128,7 +130,10 @@ class TFTpredict(bt.Strategy):
                             add_encoder_length=True,
                         )
         self.model_total_length = config.experiment['max_encoder_length'][self.p.data] + config.experiment['max_prediction_length']
-        self.model = TemporalFusionTransformer.load_from_checkpoint(self.ckpt_path)
+        if self.p.model == 'TFT':
+            self.model = TemporalFusionTransformer.load_from_checkpoint(self.ckpt_path)
+        else:
+            self.model = SparseTemporalFusionTransformer.load_from_checkpoint(self.ckpt_path)
         self.holding = 0 # number of shares held
         self.order = None # To keep track of pending orders
 

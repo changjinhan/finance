@@ -12,7 +12,7 @@ from utils.strategy import SmaCross, TFTpredict
 hparam_file = os.path.join(os.getcwd(), "hparams.yaml")
 config = HParams.load(hparam_file)
 
-def backtest(dataset, loss, stock_name, symbol, from_date, to_date, strategy):
+def backtest(dataset, model, loss, stock_name, symbol, from_date, to_date, strategy):
     # data load
     data = bt.feeds.YahooFinanceData(dataname=symbol, fromdate=date.fromisoformat(from_date), todate=date.fromisoformat(to_date))
 
@@ -21,13 +21,16 @@ def backtest(dataset, loss, stock_name, symbol, from_date, to_date, strategy):
     cerebro.broker.setcash(10000000) # initial cash
     cerebro.broker.setcommission(commission=0.00015) # commission 0.015%
 
-    if strategy == 'TFT':
+    # strategy setting
+    if strategy == 'SMA':
+        my_strategy = SmaCross
+    else:
         my_strategy = TFTpredict
         my_strategy.params.data = dataset
+        my_strategy.params.model = model
         my_strategy.params.loss = loss
         my_strategy.params.symbol = stock_name
-    else:
-        my_strategy = SmaCross
+
     cerebro.addstrategy(my_strategy) # add own strategy
 
     start_value = cerebro.broker.getvalue()
@@ -45,11 +48,12 @@ def backtest(dataset, loss, stock_name, symbol, from_date, to_date, strategy):
 # hyperparameter - using argparse and parameter module
 parser = argparse.ArgumentParser()
 parser.add_argument('--data', type=str, help='experiment data', default='kospi200+TI')
+parser.add_argument('--model', type=str, help='forecasting model(TFT, entmax15, sparsemax)', default='TFT')
 parser.add_argument('--loss', type=str, help='loss function', default='quantile')
-parser.add_argument('--strategy', type=str, help='trading strategy', default='TFT')
+parser.add_argument('--strategy', type=str, help='trading strategy(SMA, TFT)', default='TFT')
 args = parser.parse_args()
 
-stock_list = config.backtest['9']['data'][args.data]['loss'][args.loss]['stocks']
+stock_list = config.backtest['9']['data'][args.data]['model'][args.model]['loss'][args.loss]['stocks']
 
 # kospi stock listing to find the symbol of stock
 kospi = fdr.StockListing('KOSPI')
@@ -60,7 +64,7 @@ for i, stock_name in enumerate(stock_list):
     from_date = config.backtest['from_date']
     to_date = config.backtest['to_date']
     print(f'{stock_name} | {symbol}')
-    earning_rate = backtest(args.data, args.loss, stock_name, symbol, from_date, to_date, args.strategy)
+    earning_rate = backtest(args.data, args.model, args.loss, stock_name, symbol, from_date, to_date, args.strategy)
     returns.append(earning_rate)
 
 print(returns)
