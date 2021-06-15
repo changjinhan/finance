@@ -5,8 +5,8 @@ dataset_setting:
   'vol': 
     time_idx: 'days_from_start'
     target: 'log_vol'
-    group_ids: ['Region', 'Symbol']
-    static_categoricals: ['Region', 'Symbol']
+    group_ids: ['Symbol', 'Region']
+    static_categoricals: ['Symbol', 'Region']
     static_reals: []
     time_varying_known_categoricals: ["day_of_week", "day_of_month", "week_of_year", "month"]
     variable_groups: {}
@@ -17,8 +17,8 @@ dataset_setting:
   'stock_idx': 
     time_idx: 'days_from_start'
     target: 'close_price'
-    group_ids: ['Region', 'Symbol']
-    static_categoricals: ['Region', 'Symbol']
+    group_ids: ['Symbol', 'Region']
+    static_categoricals: ['Symbol', 'Region']
     static_reals: []
     time_varying_known_categoricals: ["day_of_week", "day_of_month", "week_of_year", "month"]
     variable_groups: {}
@@ -123,7 +123,8 @@ dataset_setting:
     time_varying_known_reals: ["days_from_start"]
     time_varying_unknown_categoricals: []
     # time_varying_unknown_reals: ["Close", "Volume"]
-    time_varying_unknown_reals: ["Open", "High", "Low", "Close", "Volume", "Change"]
+    # time_varying_unknown_reals: ["Open", "High", "Low", "Close", "Volume", "Change"]
+    time_varying_unknown_reals: ["Close"] # for DeepAR
 
   'kospi200+AUDCHF': 
     time_idx: 'days_from_start'
@@ -147,24 +148,26 @@ dataset_setting:
     variable_groups: {}
     time_varying_known_reals: ["days_from_start"]
     time_varying_unknown_categoricals: []
-    time_varying_unknown_reals: ['Close', 'Volume', 'Change', 'mc_mc', 'mc_mcdiff', 'mc_mcsig', 'pa_pa', 'pa_pad', 'pa_padi', 'pa_pau', 
-                                'pa_paui', 'bb_bbm', 'bb_bbh', 'bb_bbl', 'bb_bbhi', 'bb_bbli', 'so_so', 'so_sosi', 'roc', 'obv', 'fi'] # 21 features
+    time_varying_unknown_reals: ['Open', 'High', 'Low', 'Close', 'Volume', 'Change', 'mc_mc', 'mc_mcdiff', 'mc_mcsig', 'pa_pa', 'pa_pad', 'pa_padi', 
+                                'pa_pau', 'pa_paui', 'bb_bbm', 'bb_bbh', 'bb_bbl', 'bb_bbhi', 'bb_bbli', 'so_so', 'so_sosi', 'roc', 'obv', 'fi'] # 24 features
+    # time_varying_unknown_reals: ['Close'] # only close price
 
 model:
-  hidden_size: 160
+  hidden_size: 160 #160
   attention_head_size: 1 #1
-  dropout: 0.3
-  hidden_continuous_size: 8
-  output_size: 3  # 7 quantiles by default
-  log_interval: 10  # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
+  dropout: 0.3 #0.3
+  hidden_continuous_size: 8 #8
+  output_size: 3 # 7 quantiles by default
+  log_interval: 10 # uncomment for learning rate finder and otherwise, e.g. to 10 for logging every 10 batches
   reduce_on_plateau_patience: 1000 # 1000
   alpha: 0.5 # (shape:time) ratio in DILATE
-  weight: 0.01 # weight for directional and dilate quantile loss
+  weight: 0.1 # weight for directional and dilate quantile loss
+  ent_ratio: 1.5 # entmax ratio for Sparse Transformer {1.5: entmax15, 2.0: sparsemax}
   optimizer: 'ranger' # default: 'ranger'
 
 experiment:
-  epoch: 1 # 50
-  batch_size: 512 # (64, 512)
+  epoch: 50 # 50
+  batch_size: 128 # (64, 512)
   lr:
     vol: 0.01
     stock_idx: 0.01
@@ -177,7 +180,7 @@ experiment:
     kospi: 0.01
     kospi200: 0.01
     kospi200+AUDCHF: 0.01
-    kospi200+TI: 0.01
+    kospi200+TI: 0.01 #0.01
   max_prediction_length: 5 #5
   max_encoder_length:
     vol: 252
@@ -249,11 +252,13 @@ experiment:
 asset_root:
   '9': 
     'tft': '/data3/finance/assets/cjhan/tft_logs/'
+    'stft': '/data3/finance/assets/cjhan/stft_logs/'
     'deepar': '/data3/finance/assets/cjhan/deepar_logs/'
 
 optuna_root:
   '9':
     'tft': '/data3/finance/assets/cjhan/tft_logs/optuna_test'
+    'stft': '/data3/finance/assets/cjhan/stft_logs/optuna_test'
     'deepar': '/data3/finance/assets/cjhan/deepar_logs/optuna_test'
 
 transfer_path:
@@ -264,3 +269,38 @@ transfer_path:
 
 repeat_exp:
   '9': '/data3/finance/assets/cjhan/repeat_exp/'
+
+backtest:
+  'from_date': '2020-01-01'
+  'to_date': '2021-03-01'
+  '9':
+    data:
+      'kospi200+TI':
+        model:
+          'TFT':
+            loss:
+              'quantile':
+                ckpt: '/data3/finance/assets/cjhan/tft_logs/kospi200+TI/version_2/checkpoints/epoch=33.ckpt'
+                stocks: ['메리츠증권', '에스원', '쌍용양회', '하나금융지주', '아시아나항공', 'KT&G', 'KB금융', '삼성중공업', '강원랜드', 'BNK금융지주']
+              'directional(0.1)':
+                ckpt: '/data3/finance/assets/cjhan/tft_logs/kospi200+TI/version_5/checkpoints/epoch=27.ckpt'
+                stocks: ['대한항공', '에스원', '한샘', 'KT&G', '제일기획', '빙그레', 'KB금융', '아시아나항공', 'JW중외제약', '호텔신라']
+              'directional(0.5)':
+                ckpt: '/data3/finance/assets/cjhan/tft_logs/kospi200+TI/version_7/checkpoints/epoch=17.ckpt'
+                stocks: ['현대그린푸드', '삼성화재', '에스원', '유한양행', '쌍용양회', '빙그레', '하이트진로', '아시아나항공', '제일기획', 'KT&G']
+              'dilate':
+                ckpt: '/data3/finance/assets/cjhan/tft_logs/kospi200+TI/version_4/checkpoints/epoch=23.ckpt'
+                stocks: ['제일기획', '메리츠증권', '에스원', '대한항공', '하나금융지주', '빙그레', 'KB금융', '삼성화재', 'KT&G', '아모레G']
+          'entmax15':
+            loss:
+              'quantile':
+                ckpt: '/data3/finance/assets/cjhan/stft_logs/kospi200+TI/version_0/checkpoints/epoch=9.ckpt'
+                stocks: ['대한항공', '에스원', 'KT&G', '메리츠증권', '제일기획', '쌍용양회', 'LG생활건강', '하나금융지주', '대우조선해양', '빙그레']
+              'directional(0.1)':
+                ckpt: '/data3/finance/assets/cjhan/stft_logs/kospi200+TI/version_6/checkpoints/epoch=4.ckpt'
+                stocks: ['제일기획', '메리츠증권', '에스원', '호텔신라', '빙그레', '동원F&B', '대한항공', 'KT&G', '강원랜드', 'KB금융']
+          'sparsemax':
+            loss:
+              'quantile':
+                ckpt: '/data3/finance/assets/cjhan/stft_logs/kospi200+TI/version_2/checkpoints/epoch=5.ckpt'
+                stocks: ['에스원', '제일기획', '동원F&B', '대한항공', 'KB금융', '쌍용양회', '아시아나항공', '한샘', '메리츠증권', '강원랜드']            
